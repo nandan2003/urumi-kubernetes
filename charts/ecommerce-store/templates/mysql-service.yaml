@@ -1,0 +1,18 @@
+{{- if eq .Values.engine "woocommerce" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ecommerce-store.mysqlName" . }}
+  labels:
+    {{- include "ecommerce-store.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mysql
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3306
+      targetPort: mysql
+      protocol: TCP
+      name: mysql
+  selector:
+    {{- include "ecommerce-store.mysqlSelectorLabels" . | nindent 4 }}
+{{- end }}

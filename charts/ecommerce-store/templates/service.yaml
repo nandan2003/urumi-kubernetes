@@ -1,0 +1,18 @@
+{{- if eq .Values.engine "woocommerce" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ecommerce-store.wordpressName" . }}
+  labels:
+    {{- include "ecommerce-store.labels" . | nindent 4 }}
+    app.kubernetes.io/component: wordpress
+spec:
+  type: {{ .Values.wordpress.service.type }}
+  ports:
+    - port: {{ .Values.wordpress.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "ecommerce-store.wordpressSelectorLabels" . | nindent 4 }}
+{{- end }}

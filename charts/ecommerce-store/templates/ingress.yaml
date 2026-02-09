@@ -1,0 +1,34 @@
+{{- if .Values.ingress.enabled }}
+{{- $serviceName := include "ecommerce-store.wordpressName" . -}}
+{{- $servicePort := .Values.wordpress.service.port -}}
+{{- if eq .Values.engine "medusa" -}}
+{{- $serviceName = printf "%s-medusa" (include "ecommerce-store.fullname" .) -}}
+{{- $servicePort = 80 -}}
+{{- end -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "ecommerce-store.fullname" . }}
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "64m"
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ $serviceName }}
+                port:
+                  number: {{ $servicePort }}
+          {{- end }}
+    {{- end }}
+{{- end }}

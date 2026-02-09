@@ -1,0 +1,17 @@
+{{- if .Values.limits.enabled }}
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: {{ include "ecommerce-store.fullname" . }}-limits
+  labels:
+    {{- include "ecommerce-store.labels" . | nindent 4 }}
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: {{ .Values.limits.cpu.defaultRequest | quote }}
+        memory: {{ .Values.limits.memory.defaultRequest | quote }}
+      default:
+        cpu: {{ .Values.limits.cpu.defaultLimit | quote }}
+        memory: {{ .Values.limits.memory.defaultLimit | quote }}
+{{- end }}

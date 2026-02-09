@@ -1,0 +1,66 @@
+{{- if eq .Values.engine "medusa" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ecommerce-store.fullname" . }}-medusa-stub
+  labels:
+    {{- include "ecommerce-store.labels" . | nindent 4 }}
+    app.kubernetes.io/component: medusa
+data:
+  index.html: |
+    <html>
+      <head><title>Medusa Stub</title></head>
+      <body>
+        <h1>Medusa stub</h1>
+        <p>Medusa engine is not implemented in Round 1.</p>
+      </body>
+    </html>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ecommerce-store.fullname" . }}-medusa
+  labels:
+    {{- include "ecommerce-store.labels" . | nindent 4 }}
+    app.kubernetes.io/component: medusa
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: medusa
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: medusa
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: medusa-stub
+          image: nginx:1.27-alpine
+          volumeMounts:
+            - name: stub-html
+              mountPath: /usr/share/nginx/html
+      volumes:
+        - name: stub-html
+          configMap:
+            name: {{ include "ecommerce-store.fullname" . }}-medusa-stub
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ecommerce-store.fullname" . }}-medusa
+  labels:
+    {{- include "ecommerce-store.labels" . | nindent 4 }}
+    app.kubernetes.io/component: medusa
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/component: medusa
+    app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

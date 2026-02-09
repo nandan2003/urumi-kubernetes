@@ -1,0 +1,17 @@
+{{- if and (eq .Values.engine "woocommerce") .Values.wordpress.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "ecommerce-store.fullname" . }}-wordpress
+  labels:
+    {{- include "ecommerce-store.labelsWoo" . | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .Values.wordpress.persistence.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.wordpress.persistence.size }}
+  {{- if .Values.wordpress.persistence.storageClass }}
+  storageClassName: {{ .Values.wordpress.persistence.storageClass | quote }}
+  {{- end }}
+{{- end }}

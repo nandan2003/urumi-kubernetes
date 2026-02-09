@@ -1,0 +1,40 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# Node
+node_modules/
+dashboard/node_modules/
+dashboard/dist/
+
+# Go
+*.test
+
+# Logs / PIDs
+*.log
+*.pid
+orchestrator/*.log
+orchestrator/*.pid
+orchestrator/data/stores.json
+
+# Local kube / k3d
+.kube/
+
+# Build artifacts
+bin/
+dist/
+
+# Local env
+.env
+.env.*
+
+# Large/local-only assets
+Pasted image.png
+woocommerce*.zip
+
+# Helm charts packaged
+*.tgz

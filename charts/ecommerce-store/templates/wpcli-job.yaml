@@ -1,0 +1,74 @@
+{{- if and (eq .Values.engine "woocommerce") .Values.wpcli.enabled }}
+{{- $host := "localhost" -}}
+{{- if gt (len .Values.ingress.hosts) 0 -}}
+{{- $host = (index .Values.ingress.hosts 0).host -}}
+{{- end -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ecommerce-store.fullname" . }}-wpcli
+  labels:
+    {{- include "ecommerce-store.labelsWoo" . | nindent 4 }}
+spec:
+  backoffLimit: 4
+  template:
+    metadata:
+      labels:
+        {{- include "ecommerce-store.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        fsGroup: 82
+      restartPolicy: OnFailure
+      containers:
+        - name: wpcli
+          image: "{{ .Values.wordpress.image.repository }}:{{ .Values.wordpress.image.tag }}"
+          imagePullPolicy: {{ .Values.wordpress.image.pullPolicy }}
+          command: ["/bin/sh", "/scripts/setup.sh"]
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          env:
+            - name: WP_CLI_ALLOW_ROOT
+              value: "1"
+            - name: WORDPRESS_DB_HOST
+              value: {{ include "ecommerce-store.mysqlName" . }}
+            - name: WORDPRESS_DB_USER
+              value: {{ .Values.mysql.user | quote }}
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ecommerce-store.fullname" . }}-secrets
+                  key: mysql-password
+            - name: WORDPRESS_DB_NAME
+              value: {{ .Values.mysql.database | quote }}
+            - name: WP_ADMIN_USER
+              value: {{ .Values.admin.username | quote }}
+            - name: WP_ADMIN_EMAIL
+              value: {{ .Values.admin.email | quote }}
+            - name: WP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ecommerce-store.fullname" . }}-secrets
+                  key: wp-admin-password
+            - name: WP_SITE_TITLE
+              value: {{ include "ecommerce-store.fullname" . | quote }}
+            - name: WP_SITE_URL
+              value: {{ printf "http://%s" $host | quote }}
+            - name: DEMO_PRODUCT_NAME
+              value: {{ .Values.wpcli.demoProductName | quote }}
+            - name: DEMO_PRODUCT_PRICE
+              value: {{ .Values.wpcli.demoProductPrice | quote }}
+          volumeMounts:
+            - name: wordpress-data
+              mountPath: /var/www/html
+            - name: wpcli-scripts
+              mountPath: /scripts
+      volumes:
+        - name: wordpress-data
+          persistentVolumeClaim:
+            claimName: {{ include "ecommerce-store.fullname" . }}-wordpress
+        - name: wpcli-scripts
+          configMap:
+            name: {{ include "ecommerce-store.fullname" . }}-wpcli
+            defaultMode: 0755
+{{- end }}

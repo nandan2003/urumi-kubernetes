@@ -1,0 +1,88 @@
+{{- if and (eq .Values.engine "woocommerce") .Values.wpcli.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ecommerce-store.fullname" . }}-wpcli
+  labels:
+    {{- include "ecommerce-store.labelsWoo" . | nindent 4 }}
+data:
+  {{- if and .Values.wpcli.importSampleCsv (.Files.Get "files/sample-products.csv") }}
+  sample-products.csv: |
+{{ .Files.Get "files/sample-products.csv" | indent 4 }}
+
+  products.sh: |
+{{- if .Files.Get "files/products.sh" }}
+{{ .Files.Get "files/products.sh" | indent 4 }}
+{{- end }}
+  {{- end }}
+  setup.sh: |
+    #!/bin/sh
+    set +e
+
+    echo "Starting Provisioning..."
+
+    chown -R www-data:www-data /var/www/html || true
+    export WP_CLI_ALLOW_ROOT=1
+    LOG_FILE="/var/www/html/wpcli.log"
+    exec >"$LOG_FILE" 2>&1
+    set -x
+
+    cd /var/www/html
+
+    if [ ! -f /var/www/html/wp-includes/version.php ]; then
+      if [ -d /usr/src/wordpress ]; then
+        cp -a /usr/src/wordpress/. /var/www/html/ || true
+        chown -R www-data:www-data /var/www/html || true
+      fi
+    fi
+
+    if [ ! -f wp-config.php ]; then
+      wp config create \
+        --dbname="${WORDPRESS_DB_NAME}" \
+        --dbuser="${WORDPRESS_DB_USER}" \
+        --dbpass="${WORDPRESS_DB_PASSWORD}" \
+        --dbhost="${WORDPRESS_DB_HOST}" \
+        --skip-check \
+        --force \
+        --allow-root || true
+    fi
+    wp config set FS_METHOD direct --allow-root || true
+
+    echo "Waiting for database..."
+    for i in $(seq 1 120); do
+      if php -r '$m=@new mysqli(getenv("WORDPRESS_DB_HOST"), getenv("WORDPRESS_DB_USER"), getenv("WORDPRESS_DB_PASSWORD"), getenv("WORDPRESS_DB_NAME")); if ($m->connect_errno) { exit(1);} $m->close();'; then
+        break
+      fi
+      sleep 5
+    done
+
+    if ! wp core is-installed --quiet --allow-root; then
+      wp core install \
+        --url="${WP_SITE_URL}" \
+        --title="${WP_SITE_TITLE}" \
+        --admin_user="${WP_ADMIN_USER}" \
+        --admin_password="${WP_ADMIN_PASSWORD}" \
+        --admin_email="${WP_ADMIN_EMAIL}" \
+        --skip-email \
+        --allow-root || true
+    fi
+
+    wp option update home "${WP_SITE_URL}" --allow-root || true
+    wp option update siteurl "${WP_SITE_URL}" --allow-root || true
+
+    wp plugin activate woocommerce --allow-root || true
+    wp theme activate storefront --allow-root || true
+
+    wp wc tool run install_pages --user="${WP_ADMIN_USER}" --allow-root || true
+    wp option update woocommerce_cod_settings '{"enabled":"yes"}' --format=json --allow-root || true
+    wp option update woocommerce_onboarding_profile '{"skipped":true}' --format=json --allow-root || true
+    wp option update woocommerce_task_list_hidden yes --allow-root || true
+
+    if [ -f /scripts/products.sh ]; then
+      sh /scripts/products.sh || true
+    else
+      echo "products.sh not found; skipping product import."
+    fi
+
+    exit 0
+{{- end }}

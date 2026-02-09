@@ -1,0 +1,85 @@
+engine: woocommerce
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: false
+  name: ""
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations: {}
+  hosts:
+    - host: ""
+      paths:
+        - path: /
+          pathType: Prefix
+
+wordpress:
+  image:
+    repository: urumi-wordpress
+    tag: "latest"
+    pullPolicy: Never
+  replicaCount: 1
+  service:
+    type: ClusterIP
+    port: 80
+  persistence:
+    enabled: true
+    accessModes:
+      - ReadWriteOnce
+    size: 2Gi
+    storageClass: ""
+  resources: {}
+
+mysql:
+  image:
+    repository: mysql
+    tag: "8.0"
+    pullPolicy: IfNotPresent
+  database: wordpress
+  user: wordpress
+  persistence:
+    accessModes:
+      - ReadWriteOnce
+    size: 5Gi
+    storageClass: ""
+  resources: {}
+
+admin:
+  username: admin
+  email: admin@example.com
+
+secrets:
+  mysqlRootPassword: ""
+  mysqlPassword: ""
+  wpAdminPassword: ""
+
+limits:
+  enabled: true
+  cpu:
+    defaultRequest: 200m
+    defaultLimit: 500m
+  memory:
+    defaultRequest: 256Mi
+    defaultLimit: 512Mi
+
+quota:
+  enabled: true
+  requestsCpu: "1"
+  requestsMemory: 1Gi
+  limitsCpu: "2"
+  limitsMemory: 2Gi
+  requestsStorage: 10Gi
+
+networkPolicy:
+  enabled: false
+  allowIngressFromNamespace: ingress-nginx
+
+wpcli:
+  enabled: true
+  demoProductName: "Demo Product"
+  demoProductPrice: "10"
+  importSampleCsv: true
