@@ -19,8 +19,16 @@ function formatDate(value) {
   return date.toLocaleString();
 }
 
+function passwordCommand(storeId) {
+  return `KUBECONFIG=.kube/k3d-urumi-local.yaml kubectl -n store-${storeId} get secret urumi-${storeId}-ecommerce-store-secrets -o jsonpath='{.data.wp-admin-password}' | base64 -d`;
+}
+
 function provisioningStart(store) {
   if (!store) return null;
+  if (store.status === "Ready" && store.provisionedAt) {
+    const readyAt = new Date(store.provisionedAt).getTime();
+    if (!Number.isNaN(readyAt)) return readyAt;
+  }
   const created = store.createdAt ? new Date(store.createdAt).getTime() : NaN;
   const updated = store.updatedAt ? new Date(store.updatedAt).getTime() : NaN;
   if (!Number.isNaN(updated) && (Number.isNaN(created) || updated > created)) {
@@ -28,6 +36,17 @@ function provisioningStart(store) {
   }
   if (!Number.isNaN(created)) return created;
   return null;
+}
+
+function formatDuration(start, end) {
+  if (!start || !end) return "-";
+  const diffMs = end - start;
+  if (Number.isNaN(diffMs) || diffMs < 0) return "-";
+  const secs = Math.round(diffMs / 1000);
+  if (secs < 60) return `${secs}s`;
+  const mins = Math.floor(secs / 60);
+  const rem = secs % 60;
+  return `${mins}m ${rem}s`;
 }
 
 function progressForStore(store) {
@@ -58,12 +77,20 @@ export default function App() {
   const [engine, setEngine] = useState("woocommerce");
   const [subdomain, setSubdomain] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [passwordNotice, setPasswordNotice] = useState(null);
+  const [activity, setActivity] = useState([]);
+  const [metrics, setMetrics] = useState(null);
 
   const hasStores = stores.length > 0;
   const totalReady = useMemo(
     () => stores.filter((store) => store.status === "Ready").length,
     [stores]
   );
+  const totalFailed = useMemo(
+    () => stores.filter((store) => store.status === "Failed").length,
+    [stores]
+  );
+  const totalProvisioning = stores.length - totalReady - totalFailed;
 
   const fetchStores = async () => {
     try {
@@ -90,9 +117,38 @@ export default function App() {
     }
   };
 
+  const fetchActivity = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/activity`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const events = Array.isArray(data?.events) ? data.events : [];
+      setActivity(events);
+    } catch {
+      // ignore activity errors
+    }
+  };
+
+  const fetchMetrics = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/metrics`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setMetrics(data);
+    } catch {
+      // ignore metrics errors
+    }
+  };
+
   useEffect(() => {
     fetchStores();
-    const handle = setInterval(fetchStores, 5000);
+    fetchActivity();
+    fetchMetrics();
+    const handle = setInterval(() => {
+      fetchStores();
+      fetchActivity();
+      fetchMetrics();
+    }, 5000);
     return () => clearInterval(handle);
   }, []);
 
@@ -122,6 +178,14 @@ export default function App() {
       if (!res.ok) {
         const text = await res.text();
         throw new Error(text || `Create failed (${res.status})`);
+      }
+      const payload = await res.json();
+      const storePayload = payload?.store || payload;
+      if (payload?.adminPassword && storePayload?.id) {
+        setPasswordNotice({
+          id: storePayload.id,
+          password: payload.adminPassword,
+        });
       }
       setName("");
       setSubdomain("");
@@ -169,8 +233,28 @@ export default function App() {
             <span className="metric-label">Ready</span>
           </div>
           <div>
-            <span className="metric">{stores.length - totalReady}</span>
+            <span className="metric">{totalProvisioning}</span>
             <span className="metric-label">Provisioning</span>
+          </div>
+          <div>
+            <span className="metric">{totalFailed}</span>
+            <span className="metric-label">Failed</span>
+          </div>
+          <div>
+            <span className="metric">
+              {metrics?.provisioningSeconds?.avg
+                ? `${metrics.provisioningSeconds.avg.toFixed(0)}s`
+                : "-"}
+            </span>
+            <span className="metric-label">Avg Provision</span>
+          </div>
+          <div>
+            <span className="metric">
+              {metrics?.provisioningSeconds?.p95
+                ? `${metrics.provisioningSeconds.p95.toFixed(0)}s`
+                : "-"}
+            </span>
+            <span className="metric-label">P95 Provision</span>
           </div>
         </div>
       </header>
@@ -223,6 +307,28 @@ export default function App() {
         {error && <p className="error">{error}</p>}
       </section>
 
+      {passwordNotice && (
+        <section className="panel password-notice">
+          <div className="notice-row">
+            <div>
+              <h2>Initial admin password</h2>
+              <p>
+                Store <strong>{passwordNotice.id}</strong>:{" "}
+                <code>{passwordNotice.password}</code>
+              </p>
+              <p className="muted">
+                If you change the password in WordPress, this value will no longer
+                work. Retrieve the original password with:
+              </p>
+              <code>{passwordCommand(passwordNotice.id)}</code>
+            </div>
+            <button className="ghost" onClick={() => setPasswordNotice(null)}>
+              Dismiss
+            </button>
+          </div>
+        </section>
+      )}
+
       <section className="panel stores-panel">
         <div className="panel-header">
           <div>
@@ -243,6 +349,12 @@ export default function App() {
             {stores.map((store) => {
               const isStuck = storeIsStuck(store);
               const progress = progressForStore(store);
+              const displayStatus =
+                store.status === "Provisioning" && store.wasReady
+                  ? "Restarting"
+                  : store.status;
+              const createdAt = store.createdAt ? new Date(store.createdAt).getTime() : null;
+              const provisionedAt = store.provisionedAt ? new Date(store.provisionedAt).getTime() : null;
               return (
                 <article key={store.id} className="store-card">
                 <div>
@@ -250,7 +362,7 @@ export default function App() {
                   <p className="muted">{store.engine}</p>
                 </div>
                 <div className={statusTone[store.status] || "status"}>
-                  {store.status}
+                  {displayStatus}
                 </div>
                 <div className="store-meta">
                   <div>
@@ -271,6 +383,10 @@ export default function App() {
                       {progress}%{isStuck ? " (Stuck - Check Logs)" : ""}
                     </span>
                   </div>
+                  <div>
+                    <span className="label">Provisioning time: </span>
+                    <span>{formatDuration(createdAt, provisionedAt)}</span>
+                  </div>
                 </div>
                 <div className="progress">
                   <div
@@ -288,13 +404,23 @@ export default function App() {
                           <a href={url} target="_blank" rel="noreferrer">
                             Shop: {url}
                           </a>
-                          <br />
-                          <a href={adminUrl} target="_blank" rel="noreferrer">
-                            Admin: {adminUrl}
-                          </a>
+                          {store.engine === "woocommerce" && (
+                            <>
+                              <br />
+                              <a href={adminUrl} target="_blank" rel="noreferrer">
+                                Admin: {adminUrl}
+                              </a>
+                            </>
+                          )}
                         </div>
                       );
                     })}
+                    {store.engine === "woocommerce" && (
+                      <p className="muted">
+                        Initial admin password (if unchanged):{" "}
+                        <code>{passwordCommand(store.id)}</code>
+                      </p>
+                    )}
                   </div>
                 )}
                 {store.error && <p className="error">{store.error}</p>}
@@ -304,6 +430,29 @@ export default function App() {
                 </article>
               );
             })}
+          </div>
+        )}
+      </section>
+
+      <section className="panel activity-panel">
+        <div className="panel-header">
+          <div>
+            <h2>Activity</h2>
+            <p>Recent store lifecycle events.</p>
+          </div>
+          <button className="ghost" onClick={fetchActivity}>
+            Refresh
+          </button>
+        </div>
+        {activity.length === 0 ? (
+          <div className="empty">No activity yet.</div>
+        ) : (
+          <div className="activity-list">
+            {activity.map((line, index) => (
+              <div key={`${line}-${index}`} className="activity-row">
+                <code>{line}</code>
+              </div>
+            ))}
           </div>
         )}
       </section>

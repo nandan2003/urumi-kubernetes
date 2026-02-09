@@ -16,11 +16,13 @@ STOP_CLUSTER_ON_EXIT="${STOP_CLUSTER_ON_EXIT:-true}"
 DELETE_CLUSTER_ON_EXIT="${DELETE_CLUSTER_ON_EXIT:-false}"
 KUBE_READY_TIMEOUT="${KUBE_READY_TIMEOUT:-60}"
 NUCLEAR_RESET="${NUCLEAR_RESET:-false}"
+USE_RBAC="${USE_RBAC:-auto}"
 K3D_CLUSTER="${K3D_CLUSTER:-urumi-local}"
 K3D_API_PORT="${K3D_API_PORT:-6443}"
 K3D_CREATE_ARGS="${K3D_CREATE_ARGS:---servers 1 --agents 0 --port 80:80@loadbalancer --port 443:443@loadbalancer --port 6443:6443@loadbalancer}"
 KUBECONFIG_FILE="${KUBECONFIG_FILE:-$ROOT_DIR/.kube/k3d-${K3D_CLUSTER}.yaml}"
 KUBE_CONTEXT="${KUBE_CONTEXT:-k3d-${K3D_CLUSTER}}"
+ORCH_KUBECONFIG="${ORCH_KUBECONFIG:-$KUBECONFIG_FILE}"
 
 ORCH_LOG="$ROOT_DIR/orchestrator/orchestrator.log"
 DASH_LOG="$ROOT_DIR/dashboard/dashboard.log"
@@ -271,6 +273,76 @@ detect_ingress_class() {
   INGRESS_CLASS="traefik"
 }
 
+setup_orchestrator_rbac() {
+  if [[ "$USE_RBAC" == "false" ]]; then
+    ORCH_KUBECONFIG="$KUBECONFIG_FILE"
+    return
+  fi
+
+  local rbac_file="$ROOT_DIR/deploy/orchestrator-rbac.yaml"
+  if [[ ! -f "$rbac_file" ]]; then
+    echo "RBAC file not found at ${rbac_file}. Falling back to admin kubeconfig." >&2
+    ORCH_KUBECONFIG="$KUBECONFIG_FILE"
+    return
+  fi
+
+  kctl apply -f "$rbac_file" >/dev/null 2>&1 || true
+
+  local token
+  token="$(kctl -n urumi-system create token orchestrator 2>/dev/null)"
+  if [[ -z "$token" ]]; then
+    echo "Failed to create ServiceAccount token; using admin kubeconfig." >&2
+    ORCH_KUBECONFIG="$KUBECONFIG_FILE"
+    return
+  fi
+
+  local server
+  local ca_data
+  local ca_path
+  server="$(kubectl --kubeconfig "$KUBECONFIG_FILE" config view --raw -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null)"
+  ca_data="$(kubectl --kubeconfig "$KUBECONFIG_FILE" config view --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' 2>/dev/null)"
+  if [[ -z "$ca_data" ]]; then
+    ca_path="$(kubectl --kubeconfig "$KUBECONFIG_FILE" config view --raw -o jsonpath='{.clusters[0].cluster.certificate-authority}' 2>/dev/null)"
+    if [[ -n "$ca_path" && -f "$ca_path" ]]; then
+      ca_data="$(CA_PATH="$ca_path" python - <<'PY'
+import base64
+import os
+with open(os.environ["CA_PATH"], "rb") as f:
+  print(base64.b64encode(f.read()).decode())
+PY
+)"
+    fi
+  fi
+
+  if [[ -z "$server" || -z "$ca_data" ]]; then
+    echo "Failed to build ServiceAccount kubeconfig; using admin kubeconfig." >&2
+    ORCH_KUBECONFIG="$KUBECONFIG_FILE"
+    return
+  fi
+
+  ORCH_KUBECONFIG="$ROOT_DIR/.kube/orchestrator-sa.yaml"
+  cat >"$ORCH_KUBECONFIG" <<EOF
+apiVersion: v1
+kind: Config
+clusters:
+- name: ${K3D_CLUSTER}
+  cluster:
+    server: ${server}
+    certificate-authority-data: ${ca_data}
+users:
+- name: orchestrator
+  user:
+    token: ${token}
+contexts:
+- name: orchestrator
+  context:
+    cluster: ${K3D_CLUSTER}
+    user: orchestrator
+    namespace: urumi-system
+current-context: orchestrator
+EOF
+}
+
 finalize_namespace() {
   local ns="$1"
   kctl get ns "$ns" -o json 2>/dev/null | python - <<'PY' | kctl replace --raw "/api/v1/namespaces/${ns}/finalize" -f - >/dev/null 2>&1 || true
@@ -469,6 +541,7 @@ fi
 STORAGE_CLASS="${STORAGE_CLASS:-local-path}"
 VALUES_FILE="${VALUES_FILE:-$ROOT_DIR/charts/ecommerce-store/values-local.yaml}"
 detect_ingress_class
+setup_orchestrator_rbac
 
 cleanup() {
   [[ -n "${PF_PID:-}" ]] && kill "$PF_PID" >/dev/null 2>&1 || true
@@ -488,12 +561,12 @@ trap cleanup INT TERM EXIT
 
 # Start orchestrator
 cd "$ROOT_DIR/orchestrator"
+KUBECONFIG="$ORCH_KUBECONFIG" \
 STORAGE_CLASS="$STORAGE_CLASS" \
 STORE_BASE_DOMAIN="$BASE_DOMAIN" \
 INGRESS_CLASS="$INGRESS_CLASS" \
 VALUES_FILE="$VALUES_FILE" \
 WP_ADMIN_USER="admin" \
-WP_ADMIN_PASSWORD="password" \
 WP_ADMIN_EMAIL="admin@example.com" \
 go run . >"$ORCH_LOG" 2>&1 &
 ORCH_PID=$!

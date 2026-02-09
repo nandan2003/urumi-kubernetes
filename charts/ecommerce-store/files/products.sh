@@ -18,7 +18,7 @@ wp wc product create --name='Engine Tee - Yellow, Medium' --regular_price=14.99 
 wp wc product create --name='Engine Tee - Blue, Small' --regular_price=14.99 --status=publish --user=${WP_ADMIN_USER} --allow-root || true
 wp wc product create --name='Engine Tee - White, Small' --regular_price=14.99 --status=publish --user=${WP_ADMIN_USER} --allow-root || true
 wp wc product create --name='Engine Tee - Yellow, Small' --regular_price=14.99 --status=publish --user=${WP_ADMIN_USER} --allow-root || true
-wp wc product create --name='Tee' --regular_price=10 --status=publish --user=${WP_ADMIN_USER} --allow-root --short_description='This comfortable cotton t-shirt features the logo on the front and back. It is the perfect tee for any occasion.' || true
+wp wc product create --name=Tee --regular_price=10 --status=publish --user=${WP_ADMIN_USER} --allow-root --short_description='This comfortable cotton t-shirt features the logo on the front and back. It is the perfect tee for any occasion.' || true
 wp wc product create --name='Tee - Large' --regular_price=14.99 --status=publish --user=${WP_ADMIN_USER} --allow-root || true
 wp wc product create --name='Tee - Medium' --regular_price=14.99 --status=publish --user=${WP_ADMIN_USER} --allow-root || true
 wp wc product create --name='Tee - Small' --regular_price=14.99 --status=publish --user=${WP_ADMIN_USER} --allow-root || true

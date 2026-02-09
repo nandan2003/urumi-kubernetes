@@ -10,11 +10,34 @@
 - Provisioning is async. The API returns `Provisioning` immediately while Helm runs in a goroutine.
 - The Helm install uses `Wait=true` and `WaitForJobs=true`. If the WP-CLI job fails, the store is marked `Failed`.
 - Deletion first uninstalls the Helm release then deletes the namespace. Namespace deletion is the cleanup guarantee.
+- Provisioning is bounded by a timeout (`PROVISION_TIMEOUT`).
+- Provisioning retries are guarded and limited (`MAX_PROVISION_RETRIES` + `PROVISION_RETRY_BACKOFF`).
 
 ## Isolation & security posture
 - Namespace-per-store and per-namespace `ResourceQuota` and `LimitRange`.
 - Secrets generated at request time and injected into a Kubernetes Secret. No hardcoded passwords in the repo.
-- Optional NetworkPolicies can be enabled via `values-prod.yaml`.
+- NetworkPolicy is enabled in `values-prod.yaml` (prod only). Allowlist the ingress namespace:
+  - nginx -> `ingress-nginx`
+  - traefik -> `kube-system`
+- Simplest RBAC: the orchestrator runs with a ServiceAccount bound to a ClusterRole that only allows
+  store provisioning resources (namespaces, workloads, services, ingresses, PVCs, secrets). `start.sh`
+  auto-applies the RBAC manifest and falls back to admin kubeconfig if needed.
+
+## Abuse prevention & guardrails
+- Rate limiting for create/delete requests (per IP).
+- Quotas: max stores total + max stores per IP.
+- Audit log written to `orchestrator/data/audit.log`.
+
+## Observability
+- Activity log written to `orchestrator/data/activity.log` and exposed via `GET /api/activity`.
+- Dashboard shows recent activity + per-store provisioning duration.
+- Failure reasons are surfaced via `store.error`.
+- Metrics endpoint `GET /api/metrics` provides aggregate counts + avg/p95 provisioning time.
+
+## Upgrade / rollback plan
+- Each store is a Helm release (`urumi-<id>`) scoped to its namespace.
+- Upgrades are performed per store with `helm upgrade --reuse-values --atomic`.
+- Rollbacks use `helm rollback` to a previous revision (captured by `helm history`).
 
 ## Local-to-prod portability
 - The chart is identical across environments; only values files change.
@@ -24,5 +47,5 @@
 
 ## Tradeoffs
 - State is persisted in a local JSON file rather than a database to keep Round 1 scope focused.
-- Medusa is stubbed in Round 1 but the chart already supports engine switching.
+- Medusa is stubbed in Round 1 but the chart supports engine switching.
 - RBAC hardening is not yet applied; the orchestrator assumes a kubeconfig with namespace create/delete access.

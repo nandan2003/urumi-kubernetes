@@ -9,7 +9,7 @@ serviceAccount:
 
 ingress:
   enabled: true
-  className: "nginx"
+  className: ""
   annotations: {}
   hosts:
     - host: ""

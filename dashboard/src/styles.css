@@ -183,6 +183,19 @@ button.danger {
   background: rgba(255, 93, 93, 0.08);
 }
 
+.password-notice {
+  border: 1px solid rgba(255, 190, 70, 0.4);
+  background: rgba(255, 190, 70, 0.08);
+}
+
+.password-notice .notice-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
 code {
   font-family: "IBM Plex Mono", monospace;
   font-size: 0.85rem;
@@ -290,6 +303,18 @@ code {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.activity-row code {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .empty {

@@ -8,8 +8,12 @@ metadata:
     app.kubernetes.io/component: medusa
 data:
   index.html: |
+    <!doctype html>
     <html>
-      <head><title>Medusa Stub</title></head>
+      <head>
+        <meta charset="utf-8" />
+        <title>Medusa Stub</title>
+      </head>
       <body>
         <h1>Medusa stub</h1>
         <p>Medusa engine is not implemented in Round 1.</p>
@@ -27,22 +31,24 @@ spec:
   replicas: 1
   selector:
     matchLabels:
+      {{- include "ecommerce-store.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: medusa
-      app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
       labels:
+        {{- include "ecommerce-store.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: medusa
-        app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
       containers:
         - name: medusa-stub
-          image: nginx:1.27-alpine
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
           volumeMounts:
-            - name: stub-html
+            - name: medusa-stub
               mountPath: /usr/share/nginx/html
       volumes:
-        - name: stub-html
+        - name: medusa-stub
           configMap:
             name: {{ include "ecommerce-store.fullname" . }}-medusa-stub
 ---
@@ -59,8 +65,7 @@ spec:
     - port: 80
       targetPort: 80
       protocol: TCP
-      name: http
   selector:
+    {{- include "ecommerce-store.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: medusa
-    app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}

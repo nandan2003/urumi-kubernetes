@@ -107,11 +107,20 @@ kubectl get storageclass
 Retrieve admin password (replace `<id>` with the store id from the dashboard):
 
 ```bash
-kubectl -n store-<id> get secret urumi-<id>-ecommerce-store-secrets \
+KUBECONFIG=.kube/k3d-urumi-local.yaml kubectl -n store-<id> get secret urumi-<id>-ecommerce-store-secrets \
   -o jsonpath='{.data.wp-admin-password}' | base64 -d
 ```
 
 Admin user/email come from `WP_ADMIN_USER` / `WP_ADMIN_EMAIL` (defaults `admin` / `admin@example.com`).
+The admin password is generated per store and stored in the Kubernetes Secret. You can
+retrieve the initial password with:
+
+```bash
+kubectl -n store-<id> get secret urumi-<id>-ecommerce-store-secrets \
+  -o jsonpath='{.data.wp-admin-password}' | base64 -d
+```
+
+If you change the password in WordPress, the secret still contains the original value.
 
 ## Sample products
 The CSV used to seed products is stored at:
@@ -132,6 +141,9 @@ This removes the Helm release and namespace (clean teardown).
   - `STORE_BASE_DOMAIN` to your public domain (wildcard DNS).
   - `STORAGE_CLASS` to your CSI class.
   - `INGRESS_CLASS` to your controller.
+  - `networkPolicy.allowIngressFromNamespace` to match your ingress namespace:
+    - nginx -> `ingress-nginx`
+    - traefik -> `kube-system`
 
 Example:
 
@@ -146,5 +158,65 @@ go run .
 - Secrets are injected at install time by the orchestrator (no hardcoded secrets in repo).
 - Namespace-per-store provides isolation and simplified teardown.
 - Medusa is stubbed in Round 1 but the chart supports engine switching.
+
+## Abuse prevention controls (simple defaults)
+The orchestrator enforces lightweight abuse controls:
+
+- **Rate limiting** per IP for create/delete (defaults: 15 requests/minute)
+- **Max stores total** (default: 20)
+- **Max stores per IP** (default: 5)
+- **Provision timeout** (default: 8 minutes)
+- **Audit log** of create/delete in `orchestrator/data/audit.log`
+
+Override via env vars:
+
+```bash
+MAX_STORES_TOTAL=20 \
+MAX_STORES_PER_IP=5 \
+RATE_LIMIT_MAX=15 \
+RATE_LIMIT_WINDOW=1m \
+MAX_PROVISION_RETRIES=1 \
+PROVISION_RETRY_BACKOFF=10s \
+PROVISION_TIMEOUT=8m \
+./start.sh
+```
+
+## Observability (lightweight)
+- **Activity log** endpoint: `GET /api/activity` (shown in dashboard)
+- **Metrics** endpoint: `GET /api/metrics` (avg/p95 provisioning time)
+- **Audit log**: `orchestrator/data/audit.log` (create/delete events)
+- **Activity log**: `orchestrator/data/activity.log` (created/ready/failed/deleted)
+- **Provisioning duration** shown per store in the dashboard
+
+## Upgrade / rollback plan (per store)
+Each store is a Helm release named `urumi-<id>` in namespace `store-<id>`. Upgrades are
+performed per store. Use `--atomic` to auto-rollback on failures.
+
+### Upgrade (safe)
+```bash
+helm upgrade urumi-<id> charts/ecommerce-store \
+  -n store-<id> \
+  -f charts/ecommerce-store/values-local.yaml \
+  --reuse-values \
+  --atomic \
+  --wait \
+  --timeout 10m
+```
+
+### Rollback (safe)
+```bash
+helm history urumi-<id> -n store-<id>
+helm rollback urumi-<id> <REVISION> -n store-<id> --wait --timeout 10m
+```
+
+Notes:
+- `--reuse-values` keeps existing secrets, PVCs, and store settings.
+- For production, use `values-prod.yaml` instead of `values-local.yaml`.
+
+## RBAC (simplest setup)
+`./start.sh` automatically applies the RBAC manifest and runs the orchestrator with a
+ServiceAccount when possible. It falls back to the admin kubeconfig if that fails.
+
+The generated kubeconfig is stored at `.kube/orchestrator-sa.yaml`.
 
 See `SYSTEM_DESIGN.md` for tradeoffs and reliability notes.

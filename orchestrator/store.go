@@ -18,15 +18,19 @@ const (
 )
 
 type Store struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Engine    string    `json:"engine"`
-	Namespace string    `json:"namespace"`
-	Status    string    `json:"status"`
-	URLs      []string  `json:"urls"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
-	Error     string    `json:"error,omitempty"`
+	ID                string    `json:"id"`
+	Name              string    `json:"name"`
+	Engine            string    `json:"engine"`
+	Namespace         string    `json:"namespace"`
+	Status            string    `json:"status"`
+	URLs              []string  `json:"urls"`
+	CreatedAt         time.Time `json:"createdAt"`
+	UpdatedAt         time.Time `json:"updatedAt"`
+	WasReady          bool      `json:"wasReady,omitempty"`
+	ProvisionedAt     time.Time `json:"provisionedAt,omitempty"`
+	CreatedBy         string    `json:"createdBy,omitempty"`
+	ProvisionAttempts int       `json:"provisionAttempts,omitempty"`
+	Error             string    `json:"error,omitempty"`
 }
 
 type storeManager struct {
@@ -74,6 +78,14 @@ func (sm *storeManager) Load() error {
 	}
 	if sf.Order != nil {
 		sm.order = sf.Order
+	}
+	for _, store := range sm.stores {
+		if store.Status == StatusReady && !store.WasReady {
+			store.WasReady = true
+		}
+		if store.Status == StatusReady && store.ProvisionedAt.IsZero() && !store.UpdatedAt.IsZero() {
+			store.ProvisionedAt = store.UpdatedAt
+		}
 	}
 	return nil
 }

@@ -25,7 +25,7 @@ func newProvisioner(cfg config) *provisioner {
 	return &provisioner{cfg: cfg}
 }
 
-func (p *provisioner) Provision(ctx context.Context, store *Store, subdomain string) error {
+func (p *provisioner) Provision(ctx context.Context, store *Store, subdomain, adminPassword string) error {
 	chartObj, err := loader.Load(p.cfg.ChartPath)
 	if err != nil {
 		return fmt.Errorf("load chart: %w", err)
@@ -41,13 +41,11 @@ func (p *provisioner) Provision(ctx context.Context, store *Store, subdomain str
 	secrets := map[string]interface{}{
 		"mysqlRootPassword": randomString(24),
 		"mysqlPassword":     randomString(24),
-		"wpAdminPassword":   p.cfg.AdminPassword,
+		"wpAdminPassword":   adminPassword,
 	}
 
 	ingressClass := p.resolveIngressClass(ctx)
-	if ingressClass == "" {
-		ingressClass = "traefik"
-	}
+	ingressNamespace := p.resolveIngressNamespace(ingressClass)
 
 	overrides := map[string]interface{}{
 		"engine": store.Engine,
@@ -71,6 +69,11 @@ func (p *provisioner) Provision(ctx context.Context, store *Store, subdomain str
 			"email":    p.cfg.AdminEmail,
 		},
 		"secrets": secrets,
+	}
+	if ingressNamespace != "" {
+		overrides["networkPolicy"] = map[string]interface{}{
+			"allowIngressFromNamespace": ingressNamespace,
+		}
 	}
 
 	storageClass := p.cfg.StorageClass
@@ -137,14 +140,22 @@ func (p *provisioner) resolveIngressClass(ctx context.Context) string {
 	}
 
 	exists := map[string]struct{}{}
+	defaultClass := ""
 	for _, item := range list.Items {
 		exists[item.Name] = struct{}{}
+		if item.Annotations["ingressclass.kubernetes.io/is-default-class"] == "true" {
+			defaultClass = item.Name
+		}
 	}
 
 	if p.cfg.IngressClass != "" {
 		if _, ok := exists[p.cfg.IngressClass]; ok {
 			return p.cfg.IngressClass
 		}
+	}
+
+	if defaultClass != "" {
+		return defaultClass
 	}
 
 	for _, preferred := range []string{"nginx", "traefik"} {
@@ -154,6 +165,17 @@ func (p *provisioner) resolveIngressClass(ctx context.Context) string {
 	}
 
 	return list.Items[0].Name
+}
+
+func (p *provisioner) resolveIngressNamespace(ingressClass string) string {
+	switch ingressClass {
+	case "traefik":
+		return "kube-system"
+	case "nginx":
+		return "ingress-nginx"
+	default:
+		return ""
+	}
 }
 
 func (p *provisioner) ensureNamespaceReady(ctx context.Context, namespace string) error {
@@ -246,6 +268,20 @@ func (p *provisioner) Delete(ctx context.Context, store *Store) error {
 	return nil
 }
 
+func (p *provisioner) cleanupRelease(ctx context.Context, store *Store) {
+	actionConfig, err := p.newActionConfig(store.Namespace)
+	if err != nil {
+		log.Printf("cleanup release init failed: %v", err)
+		return
+	}
+
+	uninstall := action.NewUninstall(actionConfig)
+	uninstall.Timeout = 2 * time.Minute
+	if _, err := uninstall.Run(p.releaseName(store.ID)); err != nil {
+		log.Printf("cleanup release failed: %v", err)
+	}
+}
+
 func (p *provisioner) finalizeNamespace(ctx context.Context, namespace string) error {
 	clientset, err := p.getClientset()
 	if err != nil {
@@ -328,11 +364,26 @@ func (p *provisioner) reconcileStore(ctx context.Context, store *Store) (string,
 		return StatusFailed, "namespace terminating", nil
 	}
 
+	fullname := p.releaseFullname(store.ID)
+	if store.Engine == "medusa" {
+		medusaDeploy := fullname + "-medusa"
+		deploy, err := clientset.AppsV1().Deployments(store.Namespace).Get(ctx, medusaDeploy, metav1.GetOptions{})
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return StatusProvisioning, "", nil
+			}
+			return StatusProvisioning, "", err
+		}
+		if deploy.Status.ReadyReplicas < 1 {
+			return StatusProvisioning, "", nil
+		}
+		return StatusReady, "", nil
+	}
+
 	if store.Engine != "woocommerce" {
 		return StatusProvisioning, "", nil
 	}
 
-	fullname := p.releaseFullname(store.ID)
 	jobName := fullname + "-wpcli"
 	deployName := fullname + "-wordpress"
 
