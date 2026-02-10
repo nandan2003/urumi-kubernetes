@@ -1,4 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
+import ActivityPanel from "./components/ActivityPanel";
+import ApiOfflineNotice from "./components/ApiOfflineNotice";
+import CreateStorePanel from "./components/CreateStorePanel";
+import HeroSection from "./components/HeroSection";
+import PasswordNotice from "./components/PasswordNotice";
+import StoresPanel from "./components/StoresPanel";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8080";
 
@@ -248,274 +254,55 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="hero">
-        <div>
-          <p className="eyebrow">Urumi Kubernetes Store Provisioning</p>
-          <h1>Provision stores in minutes, not weeks.</h1>
-          <p className="subtitle">
-            Kubernetes-native orchestration with Helm-backed deployments.
-          </p>
-        </div>
-        <div className="hero-card">
-          <div>
-            <span className="metric">{stores.length}</span>
-            <span className="metric-label">Active Stores</span>
-          </div>
-          <div>
-            <span className="metric">{totalReady}</span>
-            <span className="metric-label">Ready</span>
-          </div>
-          <div>
-            <span className="metric">{totalProvisioning}</span>
-            <span className="metric-label">Provisioning</span>
-          </div>
-          <div>
-            <span className="metric">{totalFailed}</span>
-            <span className="metric-label">Failed</span>
-          </div>
-          <div>
-            <span className="metric">
-              {metrics?.provisioningSeconds?.avg
-                ? `${metrics.provisioningSeconds.avg.toFixed(0)}s`
-                : "-"}
-            </span>
-            <span className="metric-label">Avg Provision</span>
-          </div>
-          <div>
-            <span className="metric">
-              {metrics?.provisioningSeconds?.p95
-                ? `${metrics.provisioningSeconds.p95.toFixed(0)}s`
-                : "-"}
-            </span>
-            <span className="metric-label">P95 Provision</span>
-          </div>
-        </div>
-      </header>
+      <HeroSection
+        storesCount={stores.length}
+        totalReady={totalReady}
+        totalProvisioning={totalProvisioning}
+        totalFailed={totalFailed}
+        metrics={metrics}
+      />
 
-      {apiOffline && (
-        <section className="panel api-offline">
-          <h2>API Offline</h2>
-          <p>
-            The orchestrator is not reachable at <strong>{API_BASE}</strong>. Start it with
-            <code>STORAGE_CLASS=local-path go run .</code> from <code>orchestrator/</code>.
-          </p>
-        </section>
-      )}
+      {apiOffline && <ApiOfflineNotice apiBase={API_BASE} />}
 
-      <section className="panel create-panel">
-        <div>
-          <h2>Create a new store</h2>
-          <p>Choose an engine and claim a subdomain.</p>
-        </div>
-        <form className="create-form" onSubmit={createStore}>
-          <label>
-            Store name
-            <input
-              type="text"
-              placeholder="Midnight Bikes"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-            />
-          </label>
-          <label>
-            Engine
-            <select value={engine} onChange={(event) => setEngine(event.target.value)}>
-              <option value="woocommerce">WooCommerce</option>
-              <option value="medusa">Medusa (stub)</option>
-            </select>
-          </label>
-          <label>
-            Subdomain (optional)
-            <input
-              type="text"
-              placeholder="midnight-bikes"
-              value={subdomain}
-              onChange={(event) => setSubdomain(event.target.value)}
-            />
-          </label>
-          <button type="submit" disabled={submitting}>
-            {submitting ? "Provisioning…" : "Create Store"}
-          </button>
-        </form>
-        {error && <p className="error">{error}</p>}
-      </section>
+      <CreateStorePanel
+        name={name}
+        engine={engine}
+        subdomain={subdomain}
+        submitting={submitting}
+        error={error}
+        onNameChange={(event) => setName(event.target.value)}
+        onEngineChange={(event) => setEngine(event.target.value)}
+        onSubdomainChange={(event) => setSubdomain(event.target.value)}
+        onSubmit={createStore}
+      />
 
       {passwordNotice && (
-        <section className="panel password-notice">
-          <div className="notice-row">
-            <div>
-              <h2>Initial admin password</h2>
-              <p>
-                Store <strong>{passwordNotice.id}</strong>:{" "}
-                <code>{passwordNotice.password}</code>
-              </p>
-              <p className="muted">
-                If you change the password in WordPress, this value will no longer
-                work. Retrieve the original password with:
-              </p>
-              <code>{passwordCommand(passwordNotice.id)}</code>
-            </div>
-            <button className="ghost" onClick={() => setPasswordNotice(null)}>
-              Dismiss
-            </button>
-          </div>
-        </section>
+        <PasswordNotice
+          notice={passwordNotice}
+          onDismiss={() => setPasswordNotice(null)}
+          passwordCommand={passwordCommand}
+        />
       )}
 
-      <section className="panel stores-panel">
-        <div className="panel-header">
-          <div>
-            <h2>Stores</h2>
-            <p>Watch provisioning status and manage lifecycle.</p>
-          </div>
-          <button className="ghost" onClick={fetchStores} disabled={loading}>
-            Refresh
-          </button>
-        </div>
+      <StoresPanel
+        stores={stores}
+        loading={loading}
+        hasStores={hasStores}
+        statusTone={statusTone}
+        storeIsStuck={storeIsStuck}
+        progressForStore={progressForStore}
+        formatDate={formatDate}
+        formatDuration={formatDuration}
+        passwordCommand={passwordCommand}
+        onRefresh={fetchStores}
+        onDelete={deleteStore}
+      />
 
-        {loading ? (
-          <div className="empty">Loading stores…</div>
-        ) : !hasStores ? (
-          <div className="empty">No stores provisioned yet.</div>
-        ) : (
-          <div className="store-grid">
-            {stores.map((store) => {
-              const isStuck = storeIsStuck(store);
-              const progress = progressForStore(store);
-              const displayStatus =
-                store.status === "Provisioning" && store.wasReady
-                  ? "Restarting"
-                  : store.status;
-              const createdAt = store.createdAt ? new Date(store.createdAt).getTime() : null;
-              const provisionedAt = store.provisionedAt ? new Date(store.provisionedAt).getTime() : null;
-              return (
-                <article key={store.id} className="store-card">
-                <div>
-                  <h3>{store.name}</h3>
-                  <p className="muted">{store.engine}</p>
-                </div>
-                <div className={statusTone[store.status] || "status"}>
-                  {displayStatus}
-                </div>
-                <div className="store-meta">
-                  <div>
-                    <span className="label">Store ID: </span>
-                    <span>{store.id}</span>
-                  </div>
-                  <div>
-                    <span className="label">Namespace: </span>
-                    <span>{store.namespace}</span>
-                  </div>
-                  <div>
-                    <span className="label">Created At: </span>
-                    <span>{formatDate(store.createdAt)}</span>
-                  </div>
-                  <div>
-                    <span className="label">Progress (est.): </span>
-                    <span>
-                      {progress}%{isStuck ? " (Stuck - Check Logs)" : ""}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="label">Provisioning time: </span>
-                    <span>{formatDuration(createdAt, provisionedAt)}</span>
-                  </div>
-                </div>
-                <div className="progress">
-                  <div
-                    className={`progress-bar${isStuck ? " progress-bar--stuck" : ""}`}
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-                {store.status === "Ready" && (
-                  <div className="store-links">
-                    {(store.urls || []).map((url) => {
-                      const trimmed = url.replace(/\/+$/, "");
-                      const adminUrl = `${trimmed}/wp-admin/`;
-                      return (
-                        <div key={url}>
-                          <a href={url} target="_blank" rel="noreferrer">
-                            Shop: {url}
-                          </a>
-                          {store.engine === "woocommerce" && (
-                            <>
-                              <br />
-                              <a href={adminUrl} target="_blank" rel="noreferrer">
-                                Admin: {adminUrl}
-                              </a>
-                            </>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {store.engine === "woocommerce" && (
-                      <p className="muted">
-                        Initial admin password (if unchanged):{" "}
-                        <code>{passwordCommand(store.id)}</code>
-                      </p>
-                    )}
-                  </div>
-                )}
-                {store.error && <p className="error">{store.error}</p>}
-                <button className="danger" onClick={() => deleteStore(store.id)}>
-                  Delete
-                </button>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      <section className="panel activity-panel">
-        <div className="panel-header">
-          <div>
-            <h2>Activity</h2>
-            <p>Recent store lifecycle events.</p>
-          </div>
-          <button className="ghost" onClick={fetchActivity}>
-            Refresh
-          </button>
-        </div>
-        {activityItems.length === 0 ? (
-          <div className="empty">No activity yet.</div>
-        ) : (
-          <div className="activity-list">
-            {activityItems.map((item) => {
-              const isError =
-                item.status === "Failed" ||
-                item.event.includes("failed") ||
-                item.event.includes("error");
-              const headline = [item.event, item.status]
-                .filter(Boolean)
-                .join(" · ");
-              const when = item.tsRaw ? formatDate(item.tsRaw) : "-";
-              return (
-                <div
-                  key={`${item.raw}-${item.index}`}
-                  className={`activity-row${isError ? " activity-row--error" : ""}`}
-                >
-                  <div className="activity-main">
-                    <span className="activity-event">{headline || "Event"}</span>
-                  </div>
-                  <div className="activity-meta">
-                    <span>Store: {item.store || "-"}</span>
-                    <span>When: {when}</span>
-                  </div>
-                  {item.detail && (
-                    <div className="activity-detail">{item.detail}</div>
-                  )}
-                  {!item.detail && !item.event && (
-                    <div className="activity-detail">
-                      <code>{item.raw}</code>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
+      <ActivityPanel
+        activityItems={activityItems}
+        formatDate={formatDate}
+        onRefresh={fetchActivity}
+      />
     </div>
   );
 }
