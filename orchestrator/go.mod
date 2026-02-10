@@ -1,6 +1,6 @@
 module urumi-orchestrator
 
-go 1.25.0
+go 1.22
 
 require (
 	helm.sh/helm/v3 v3.20.0
