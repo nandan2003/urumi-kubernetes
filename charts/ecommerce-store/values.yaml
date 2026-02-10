@@ -77,6 +77,8 @@ quota:
 networkPolicy:
   enabled: false
   allowIngressFromNamespace: ingress-nginx
+  allowIngressFromSameNamespace: true
+  allowEgressToInternet: false
 
 wpcli:
   enabled: true

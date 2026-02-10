@@ -311,10 +311,53 @@ code {
   gap: 8px;
 }
 
-.activity-row code {
-  display: block;
+.activity-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(11, 14, 20, 0.6);
+}
+
+.activity-row--error {
+  border-color: rgba(255, 93, 93, 0.4);
+  background: rgba(255, 93, 93, 0.08);
+}
+
+.activity-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.activity-event {
+  text-transform: capitalize;
+}
+
+.activity-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.activity-detail {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.82);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.activity-detail code {
+  display: block;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
 }
 
 .empty {

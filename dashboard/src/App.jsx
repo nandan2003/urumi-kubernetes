@@ -19,6 +19,25 @@ function formatDate(value) {
   return date.toLocaleString();
 }
 
+function parseActivityLine(line) {
+  if (!line) return { raw: line, ts: null };
+  try {
+    const parsed = JSON.parse(line);
+    const ts = parsed?.ts ? new Date(parsed.ts).getTime() : null;
+    return {
+      raw: line,
+      ts: Number.isNaN(ts) ? null : ts,
+      tsRaw: parsed?.ts || "",
+      event: parsed?.event || "",
+      status: parsed?.status || "",
+      store: parsed?.store || parsed?.name || "",
+      detail: parsed?.detail || "",
+    };
+  } catch {
+    return { raw: line, ts: null };
+  }
+}
+
 function passwordCommand(storeId) {
   return `KUBECONFIG=.kube/k3d-urumi-local.yaml kubectl -n store-${storeId} get secret urumi-${storeId}-ecommerce-store-secrets -o jsonpath='{.data.wp-admin-password}' | base64 -d`;
 }
@@ -91,6 +110,20 @@ export default function App() {
     [stores]
   );
   const totalProvisioning = stores.length - totalReady - totalFailed;
+  const activityItems = useMemo(() => {
+    const mapped = activity.map((line, index) => ({
+      ...parseActivityLine(line),
+      index,
+    }));
+    return mapped.sort((a, b) => {
+      if (a.ts != null && b.ts != null && a.ts !== b.ts) {
+        return b.ts - a.ts;
+      }
+      if (a.ts != null && b.ts == null) return -1;
+      if (a.ts == null && b.ts != null) return 1;
+      return b.index - a.index;
+    });
+  }, [activity]);
 
   const fetchStores = async () => {
     try {
@@ -444,15 +477,42 @@ export default function App() {
             Refresh
           </button>
         </div>
-        {activity.length === 0 ? (
+        {activityItems.length === 0 ? (
           <div className="empty">No activity yet.</div>
         ) : (
           <div className="activity-list">
-            {activity.map((line, index) => (
-              <div key={`${line}-${index}`} className="activity-row">
-                <code>{line}</code>
-              </div>
-            ))}
+            {activityItems.map((item) => {
+              const isError =
+                item.status === "Failed" ||
+                item.event.includes("failed") ||
+                item.event.includes("error");
+              const headline = [item.event, item.status]
+                .filter(Boolean)
+                .join(" · ");
+              const when = item.tsRaw ? formatDate(item.tsRaw) : "-";
+              return (
+                <div
+                  key={`${item.raw}-${item.index}`}
+                  className={`activity-row${isError ? " activity-row--error" : ""}`}
+                >
+                  <div className="activity-main">
+                    <span className="activity-event">{headline || "Event"}</span>
+                  </div>
+                  <div className="activity-meta">
+                    <span>Store: {item.store || "-"}</span>
+                    <span>When: {when}</span>
+                  </div>
+                  {item.detail && (
+                    <div className="activity-detail">{item.detail}</div>
+                  )}
+                  {!item.detail && !item.event && (
+                    <div className="activity-detail">
+                      <code>{item.raw}</code>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </section>

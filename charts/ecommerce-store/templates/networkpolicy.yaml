@@ -20,6 +20,13 @@ spec:
       ports:
         - protocol: TCP
           port: 80
+    {{- if .Values.networkPolicy.allowIngressFromSameNamespace }}
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 80
+    {{- end }}
   egress:
     - to:
         - podSelector:
@@ -40,6 +47,16 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+    {{- if .Values.networkPolicy.allowEgressToInternet }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443
+    {{- end }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

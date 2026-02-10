@@ -24,3 +24,5 @@ mysql:
 networkPolicy:
   enabled: true
   allowIngressFromNamespace: ingress-nginx
+  allowIngressFromSameNamespace: true
+  allowEgressToInternet: false

@@ -122,6 +122,13 @@ kubectl -n store-<id> get secret urumi-<id>-ecommerce-store-secrets \
 
 If you change the password in WordPress, the secret still contains the original value.
 
+To reset the admin password manually (example):
+
+```bash
+kubectl -n store-<id> exec deploy/urumi-<id>-ecommerce-store-wordpress \
+  -- wp user update admin --user_pass='<newpass>'
+```
+
 ## Sample products
 The CSV used to seed products is stored at:
 `charts/ecommerce-store/files/sample-products.csv`
@@ -144,6 +151,8 @@ This removes the Helm release and namespace (clean teardown).
   - `networkPolicy.allowIngressFromNamespace` to match your ingress namespace:
     - nginx -> `ingress-nginx`
     - traefik -> `kube-system`
+  - `networkPolicy.allowIngressFromSameNamespace`: allow intra-namespace access to WordPress (safe default).
+  - `networkPolicy.allowEgressToInternet`: keep `false` unless you need outbound HTTP/HTTPS (e.g., updates).
 
 Example:
 
