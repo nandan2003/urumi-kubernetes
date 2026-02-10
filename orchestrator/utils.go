@@ -1,3 +1,4 @@
+// Utility helpers shared across orchestrator components.
 package main
 
 import (

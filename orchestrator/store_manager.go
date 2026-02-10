@@ -1,3 +1,4 @@
+// Store manager handles persistence and ID generation.
 package main
 
 import (
@@ -54,6 +55,7 @@ func newStoreManager(filePath string) *storeManager {
 }
 
 func (sm *storeManager) Load() error {
+	// Load stores from disk and reconcile ordering.
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 

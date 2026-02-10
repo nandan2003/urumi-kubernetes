@@ -1,3 +1,4 @@
+// Store ordering helpers (list + order reconciliation).
 package main
 
 import "sort"

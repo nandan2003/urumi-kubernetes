@@ -1,3 +1,4 @@
+// Orchestrator HTTP API and background reconciler for store lifecycle.
 package main
 
 import (
