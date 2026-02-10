@@ -19,9 +19,10 @@
 - NetworkPolicy is enabled in `values-prod.yaml` (prod only). Allowlist the ingress namespace:
   - nginx -> `ingress-nginx`
   - traefik -> `kube-system`
-- Simplest RBAC: the orchestrator runs with a ServiceAccount bound to a ClusterRole that only allows
-  store provisioning resources (namespaces, workloads, services, ingresses, PVCs, secrets). `start.sh`
-  auto-applies the RBAC manifest and falls back to admin kubeconfig if needed.
+- Per-namespace RBAC: the orchestrator runs with a ServiceAccount that has cluster-scope permissions
+  only for namespaces + discovery, and it creates a RoleBinding inside each `store-*` namespace for
+  the resources it needs. `start.sh` auto-applies the RBAC manifest and falls back to admin kubeconfig
+  if needed.
 
 ## Abuse prevention & guardrails
 - Rate limiting for create/delete requests (per IP).

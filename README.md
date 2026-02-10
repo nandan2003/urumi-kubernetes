@@ -213,9 +213,12 @@ Notes:
 - `--reuse-values` keeps existing secrets, PVCs, and store settings.
 - For production, use `values-prod.yaml` instead of `values-local.yaml`.
 
-## RBAC (simplest setup)
+## RBAC (per-namespace least privilege)
 `./start.sh` automatically applies the RBAC manifest and runs the orchestrator with a
 ServiceAccount when possible. It falls back to the admin kubeconfig if that fails.
+
+The ServiceAccount gets only cluster-scope permissions for namespaces + discovery,
+and per-store permissions are granted via RoleBinding inside each `store-*` namespace.
 
 The generated kubeconfig is stored at `.kube/orchestrator-sa.yaml`.
 

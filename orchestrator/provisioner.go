@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"helm.sh/helm/v3/pkg/action"
@@ -12,6 +13,7 @@ import (
 	"helm.sh/helm/v3/pkg/chartutil"
 	"helm.sh/helm/v3/pkg/cli"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -20,6 +22,13 @@ import (
 type provisioner struct {
 	cfg config
 }
+
+const (
+	orchestratorNamespaceRoleName = "urumi-orchestrator-ns"
+	orchestratorRoleBindingName   = "urumi-orchestrator"
+	orchestratorServiceAccount    = "orchestrator"
+	orchestratorNamespace         = "urumi-system"
+)
 
 func newProvisioner(cfg config) *provisioner {
 	return &provisioner{cfg: cfg}
@@ -109,6 +118,12 @@ func (p *provisioner) Provision(ctx context.Context, store *Store, subdomain, ad
 
 	if err := p.ensureNamespaceReady(ctx, store.Namespace); err != nil {
 		return err
+	}
+	if err := p.ensureNamespaceExists(ctx, store.Namespace); err != nil {
+		return fmt.Errorf("ensure namespace: %w", err)
+	}
+	if err := p.ensureNamespaceAccess(ctx, store.Namespace); err != nil {
+		return fmt.Errorf("ensure namespace rbac: %w", err)
 	}
 
 	install := action.NewInstall(actionConfig)
@@ -216,6 +231,10 @@ func (p *provisioner) Delete(ctx context.Context, store *Store) error {
 	actionConfig, err := p.newActionConfig(store.Namespace)
 	if err != nil {
 		return fmt.Errorf("init helm: %w", err)
+	}
+
+	if err := p.ensureNamespaceAccess(ctx, store.Namespace); err != nil {
+		log.Printf("namespace rbac ensure failed: %v", err)
 	}
 
 	uninstall := action.NewUninstall(actionConfig)
@@ -348,6 +367,7 @@ func (p *provisioner) getClientset() (*kubernetes.Clientset, error) {
 }
 
 func (p *provisioner) reconcileStore(ctx context.Context, store *Store) (string, string, error) {
+	_ = p.ensureNamespaceAccess(ctx, store.Namespace)
 	clientset, err := p.getClientset()
 	if err != nil {
 		return StatusProvisioning, "", err
@@ -413,4 +433,98 @@ func (p *provisioner) reconcileStore(ctx context.Context, store *Store) (string,
 	}
 
 	return StatusReady, "", nil
+}
+
+func (p *provisioner) ensureNamespaceExists(ctx context.Context, namespace string) error {
+	clientset, err := p.getClientset()
+	if err != nil {
+		return err
+	}
+	_, err = clientset.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
+	if err == nil {
+		return nil
+	}
+	if !apierrors.IsNotFound(err) {
+		return err
+	}
+	_, err = clientset.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: namespace,
+		},
+	}, metav1.CreateOptions{})
+	if apierrors.IsAlreadyExists(err) {
+		return nil
+	}
+	return err
+}
+
+func (p *provisioner) ensureNamespaceAccess(ctx context.Context, namespace string) error {
+	if !strings.HasPrefix(namespace, "store-") {
+		return nil
+	}
+	clientset, err := p.getClientset()
+	if err != nil {
+		return err
+	}
+	if _, err := clientset.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{}); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	desired := &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      orchestratorRoleBindingName,
+			Namespace: namespace,
+		},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: "rbac.authorization.k8s.io",
+			Kind:     "ClusterRole",
+			Name:     orchestratorNamespaceRoleName,
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind:      "ServiceAccount",
+				Name:      orchestratorServiceAccount,
+				Namespace: orchestratorNamespace,
+			},
+		},
+	}
+
+	existing, err := clientset.RbacV1().RoleBindings(namespace).Get(ctx, orchestratorRoleBindingName, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		_, err = clientset.RbacV1().RoleBindings(namespace).Create(ctx, desired, metav1.CreateOptions{})
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	if roleBindingMatches(existing, desired) {
+		return nil
+	}
+	existing.RoleRef = desired.RoleRef
+	existing.Subjects = desired.Subjects
+	_, err = clientset.RbacV1().RoleBindings(namespace).Update(ctx, existing, metav1.UpdateOptions{})
+	return err
+}
+
+func roleBindingMatches(existing, desired *rbacv1.RoleBinding) bool {
+	if existing.RoleRef.APIGroup != desired.RoleRef.APIGroup ||
+		existing.RoleRef.Kind != desired.RoleRef.Kind ||
+		existing.RoleRef.Name != desired.RoleRef.Name {
+		return false
+	}
+	if len(existing.Subjects) != len(desired.Subjects) {
+		return false
+	}
+	for i, subj := range desired.Subjects {
+		if i >= len(existing.Subjects) {
+			return false
+		}
+		if existing.Subjects[i] != subj {
+			return false
+		}
+	}
+	return true
 }
