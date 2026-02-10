@@ -1,5 +1,5 @@
 ingress:
-  className: "nginx"
+  className: "traefik"
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
 
@@ -23,6 +23,6 @@ mysql:
 
 networkPolicy:
   enabled: true
-  allowIngressFromNamespace: ingress-nginx
+  allowIngressFromNamespace: kube-system
   allowIngressFromSameNamespace: true
   allowEgressToInternet: false

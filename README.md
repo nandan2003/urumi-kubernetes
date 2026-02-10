@@ -161,6 +161,104 @@ STORE_BASE_DOMAIN=stores.example.com \
 VALUES_FILE=../charts/ecommerce-store/values-prod.yaml \
 STORAGE_CLASS=local-path \
 go run .
+
+## VPS runbook (Azure k3s)
+Use this if you are deploying to a single Azure VM and want stable wildcard domains.
+
+### 0) VM baseline
+- Size: Standard_D8as_v4 (smaller works for demos).
+- OS: Ubuntu 22.04 LTS.
+- Public IP: Static.
+- Open ports: 22, 80, 443. (Optional: 6443 for remote kubectl.)
+
+### 1) SSH
+```bash
+ssh <user>@<public-ip>
+```
+
+### 2) OS prep
+```bash
+sudo swapoff -a
+sudo sed -i '/ swap / s/^/#/' /etc/fstab
+sudo apt-get update -y
+sudo apt-get install -y curl ca-certificates
+```
+
+### 3) Install k3s (single-node)
+```bash
+curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
+kubectl get nodes
+```
+
+### 4) Ingress choice (recommended: Traefik)
+k3s ships with Traefik. For simplicity and fewer moving parts, keep Traefik.
+If you install nginx ingress, also update `values-prod.yaml` to use:
+`ingress.className: "nginx"` and `networkPolicy.allowIngressFromNamespace: ingress-nginx`.
+
+### 5) DNS (use your purchased domain)
+Create a wildcard DNS record:
+```
+*.stores.example.com  ->  <your-public-ip>
+```
+
+### 6) Clone repo
+```bash
+git clone https://github.com/nandan2003/urumi-kubernetes.git
+cd urumi-kubernetes
+```
+
+### 7) Use values-prod.yaml (Traefik + kube-system allowlist)
+`charts/ecommerce-store/values-prod.yaml` is already set for Traefik:
+- `ingress.className: traefik`
+- `networkPolicy.allowIngressFromNamespace: kube-system`
+
+### 8) Start orchestrator (prod values)
+```bash
+cd orchestrator
+STORE_BASE_DOMAIN=stores.example.com \
+VALUES_FILE=../charts/ecommerce-store/values-prod.yaml \
+INGRESS_CLASS=traefik \
+STORAGE_CLASS=local-path \
+go run .
+```
+If you installed Longhorn, use `STORAGE_CLASS=longhorn`.
+
+### 9) Run dashboard
+On VPS:
+```bash
+cd ../dashboard
+VITE_API_BASE=http://<public-ip>:8080 npm install
+VITE_API_BASE=http://<public-ip>:8080 npm run dev -- --host 0.0.0.0 --port 5173
+```
+Open `http://<public-ip>:5173`.
+
+### 10) Create a store
+From the dashboard:
+- Name: `nike`
+- Engine: WooCommerce
+
+Expected URL:
+```
+http://nike.stores.example.com
+```
+
+### 11) Admin password retrieval
+```bash
+kubectl -n store-nike get secret urumi-nike-ecommerce-store-secrets \
+  -o jsonpath='{.data.wp-admin-password}' | base64 -d
+```
+
+### 12) If you see 404
+- Wait 1–2 minutes (DNS/Ingress propagation).
+- Check ingress:
+```bash
+kubectl get pods -A | grep -i traefik
+```
+
+### 13) Optional hardening
+- NetworkPolicy already enabled in `values-prod.yaml`.
+- Increase resource limits in `values-prod.yaml` if needed.
+- Use Longhorn for more reliable persistent storage.
 ```
 
 ## Notes
