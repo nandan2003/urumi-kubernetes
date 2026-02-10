@@ -32,6 +32,9 @@ dist/
 .env
 .env.*
 
+# Local runtime state
+.state/
+
 # Large/local-only assets
 Pasted image.png
 woocommerce*.zip
