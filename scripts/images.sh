@@ -67,6 +67,10 @@ import_k3s_image() {
   if ! ensure_sudo; then
     die "sudo authorization failed; cannot import image into k3s."
   fi
+  if sudo k3s ctr images ls -q | grep -q 'urumi-wordpress:latest'; then
+    log "k3s already has urumi-wordpress:latest; skipping import."
+    return
+  fi
   local tar="/tmp/urumi-wordpress.tar"
   log "Exporting WordPress image..."
   if ! docker save urumi-wordpress:latest -o "$tar"; then

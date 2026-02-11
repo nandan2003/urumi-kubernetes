@@ -9,12 +9,14 @@ metadata:
   name: {{ include "ecommerce-store.fullname" . }}-wpcli
   labels:
     {{- include "ecommerce-store.labelsWoo" . | nindent 4 }}
+    app.kubernetes.io/component: wordpress
 spec:
   backoffLimit: 4
   template:
     metadata:
       labels:
         {{- include "ecommerce-store.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: wordpress
     spec:
       securityContext:
         fsGroup: 82

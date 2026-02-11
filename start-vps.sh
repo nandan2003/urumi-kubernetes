@@ -5,7 +5,7 @@ set +e
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR" || exit 1
 
-VM_PUBLIC_IP="${VM_PUBLIC_IP:-}"
+VM_PUBLIC_IP="${VM_PUBLIC_IP:-20.244.48.232}"
 BASE_DOMAIN="${BASE_DOMAIN:-${VM_PUBLIC_IP}.nip.io}"
 DASH_PORT="${DASH_PORT:-5173}"
 DASH_HOST="${DASH_HOST:-dashboard.${VM_PUBLIC_IP}.nip.io}"
