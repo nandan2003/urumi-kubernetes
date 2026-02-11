@@ -1,9 +1,9 @@
 module urumi-orchestrator
 
-go 1.22
+go 1.25.0
 
 require (
-	helm.sh/helm/v3 v3.20.0
+	helm.sh/helm/v3 v3.14.4
 	k8s.io/apimachinery v0.35.0
 	k8s.io/client-go v0.35.0
 )
