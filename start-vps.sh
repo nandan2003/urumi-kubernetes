@@ -11,7 +11,8 @@ VM_PUBLIC_IP="${VM_PUBLIC_IP:-20.244.48.232}"
 STORE_BASE_DOMAIN="${STORE_BASE_DOMAIN:-${VM_PUBLIC_IP}.nip.io}"
 API_ADDR="${API_ADDR:-http://${VM_PUBLIC_IP}:8080}"
 DASH_PORT="${DASH_PORT:-5173}"
-DASH_ADDR="${DASH_ADDR:-http://dashboard.${VM_PUBLIC_IP}.nip.io:${DASH_PORT}}"
+DASH_HOST="${DASH_HOST:-dashboard.${VM_PUBLIC_IP}.nip.io}"
+DASH_ADDR="${DASH_ADDR:-http://${DASH_HOST}:${DASH_PORT}}"
 
 KUBECONFIG_FILE="${KUBECONFIG_FILE:-/etc/rancher/k3s/k3s.yaml}"
 VALUES_FILE="${VALUES_FILE:-$ROOT_DIR/charts/ecommerce-store/values-prod.yaml}"
@@ -109,7 +110,9 @@ cd "$ROOT_DIR/dashboard" || exit 1
 if [[ ! -d "$ROOT_DIR/dashboard/node_modules" ]]; then
   VITE_API_BASE="$API_ADDR" npm install >/dev/null 2>&1 || true
 fi
-VITE_API_BASE="$API_ADDR" npm run dev -- --host 0.0.0.0 --port "$DASH_PORT" >"$DASH_LOG" 2>&1 &
+VITE_ALLOWED_HOSTS="${VITE_ALLOWED_HOSTS:-${DASH_HOST},${VM_PUBLIC_IP}.nip.io,localhost,127.0.0.1}" \
+VITE_API_BASE="$API_ADDR" \
+npm run dev -- --host 0.0.0.0 --port "$DASH_PORT" >"$DASH_LOG" 2>&1 &
 DASH_PID=$!
 echo "$DASH_PID" >"$ROOT_DIR/dashboard/.dashboard.pid"
 

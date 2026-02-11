@@ -289,7 +289,9 @@ go run .
 
 cd ../dashboard
 VITE_API_BASE=http://<public-ip>:8080 npm install
-VITE_API_BASE=http://<public-ip>:8080 npm run dev -- --host 0.0.0.0 --port 5173
+VITE_ALLOWED_HOSTS=dashboard.<public-ip>.nip.io,<public-ip>.nip.io \
+VITE_API_BASE=http://<public-ip>:8080 \
+npm run dev -- --host 0.0.0.0 --port 5173
 ```
 ```
 
