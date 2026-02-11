@@ -49,14 +49,25 @@ data:
     wp config set FS_METHOD direct --allow-root || true
 
     echo "Waiting for database..."
-    for i in $(seq 1 120); do
+    DB_READY="false"
+    for i in $(seq 1 240); do
       if php -r '$m=@new mysqli(getenv("WORDPRESS_DB_HOST"), getenv("WORDPRESS_DB_USER"), getenv("WORDPRESS_DB_PASSWORD"), getenv("WORDPRESS_DB_NAME")); if ($m->connect_errno) { exit(1);} $m->close();'; then
+        DB_READY="true"
         break
       fi
       sleep 5
     done
+    if [ "$DB_READY" != "true" ]; then
+      echo "Database not ready after 20 minutes; skipping install."
+      exit 0
+    fi
 
-    if ! wp core is-installed --quiet --allow-root; then
+    INSTALL_OK="false"
+    for i in $(seq 1 120); do
+      if wp core is-installed --quiet --allow-root; then
+        INSTALL_OK="true"
+        break
+      fi
       wp core install \
         --url="${WP_SITE_URL}" \
         --title="${WP_SITE_TITLE}" \
@@ -65,6 +76,16 @@ data:
         --admin_email="${WP_ADMIN_EMAIL}" \
         --skip-email \
         --allow-root || true
+      sleep 5
+    done
+    if [ "$INSTALL_OK" != "true" ]; then
+      if wp core is-installed --quiet --allow-root; then
+        INSTALL_OK="true"
+      fi
+    fi
+    if [ "$INSTALL_OK" != "true" ]; then
+      echo "WordPress install not complete; skipping post-install steps."
+      exit 0
     fi
 
     wp option update home "${WP_SITE_URL}" --allow-root || true
