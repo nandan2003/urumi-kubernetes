@@ -13,7 +13,8 @@ fi
 
 # Configuration (env-overridable).
 API_ADDR="${API_ADDR:-http://localhost:8080}"
-DASH_ADDR="${DASH_ADDR:-http://localhost:5173}"
+DASH_PORT="${DASH_PORT:-5173}"
+DASH_ADDR="${DASH_ADDR:-http://localhost:${DASH_PORT}}"
 PORT_FWD_PORT="${PORT_FWD_PORT:-9999}"
 ADMIN_PORT_BASE="${ADMIN_PORT_BASE:-9999}"
 ADMIN_PORT_MAX="${ADMIN_PORT_MAX:-11000}"
@@ -74,10 +75,14 @@ start_orchestrator() {
 start_dashboard() {
   # Start Vite dev server (logs to dashboard.log).
   cd "$ROOT_DIR/dashboard" || return 1
+  local extra_args=()
+  if [[ "$STACK_MODE" == "vps" ]]; then
+    extra_args=(-- --host 0.0.0.0 --port "$DASH_PORT")
+  fi
   if [[ -n "${VITE_ALLOWED_HOSTS:-}" ]]; then
-    VITE_ALLOWED_HOSTS="$VITE_ALLOWED_HOSTS" VITE_API_BASE="$API_ADDR" npm run dev >"$DASH_LOG" 2>&1 &
+    VITE_ALLOWED_HOSTS="$VITE_ALLOWED_HOSTS" VITE_API_BASE="$API_ADDR" npm run dev "${extra_args[@]}" >"$DASH_LOG" 2>&1 &
   else
-    VITE_API_BASE="$API_ADDR" npm run dev >"$DASH_LOG" 2>&1 &
+    VITE_API_BASE="$API_ADDR" npm run dev "${extra_args[@]}" >"$DASH_LOG" 2>&1 &
   fi
   DASH_PID=$!
   echo "$DASH_PID" >"$ROOT_DIR/dashboard/.dashboard.pid"
