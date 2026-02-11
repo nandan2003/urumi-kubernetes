@@ -25,8 +25,6 @@ DELETE_CLUSTER_ON_EXIT="${DELETE_CLUSTER_ON_EXIT:-false}"
 KUBE_READY_TIMEOUT="${KUBE_READY_TIMEOUT:-60}"
 NUCLEAR_RESET="${NUCLEAR_RESET:-false}"
 USE_RBAC="${USE_RBAC:-auto}"
-STACK_MODE="${STACK_MODE:-local}"
-BUILD_WORDPRESS_IMAGE="${BUILD_WORDPRESS_IMAGE:-true}"
 K3D_CLUSTER="${K3D_CLUSTER:-urumi-local}"
 K3D_API_PORT="${K3D_API_PORT:-6443}"
 K3D_CREATE_ARGS="${K3D_CREATE_ARGS:---servers 1 --agents 0 --port 80:80@loadbalancer --port 443:443@loadbalancer --port 6443:6443@loadbalancer}"
@@ -82,18 +80,6 @@ start_dashboard() {
 
 print_summary() {
   # Print endpoints for quick access.
-  if [[ "$STACK_MODE" == "vps" ]]; then
-    cat <<INFO
-
-Urumi VPS Stack
-===============
-Dashboard: ${DASH_ADDR}
-API:       ${API_ADDR}/healthz
-Store:     http://<store-id>.${BASE_DOMAIN}
-Admin:     http://<store-id>.${BASE_DOMAIN}/wp-admin
-INFO
-    return
-  fi
   cat <<INFO
 
 Urumi Local Stack
@@ -120,71 +106,42 @@ cleanup() {
 main() {
   # Preflight, cluster boot, image build/import, then services.
   require_cmd kubectl
+  require_cmd helm
   require_cmd go
   require_cmd npm
-  if [[ "$BUILD_WORDPRESS_IMAGE" == "true" ]]; then
-    require_cmd docker
+  require_cmd docker
+  require_cmd k3d
+
+  if ! preflight_docker; then
+    die "Docker is not healthy. Start Docker (e.g., systemctl start docker) and re-run ./start.sh"
   fi
-  if [[ "$STACK_MODE" == "local" ]]; then
-    require_cmd helm
-    require_cmd k3d
-  else
-    require_cmd k3s
+  if ! preflight_k3d; then
+    die "k3d is not responding. Ensure Docker is running and re-run ./start.sh"
   fi
 
-  if [[ "$BUILD_WORDPRESS_IMAGE" == "true" ]]; then
-    if ! preflight_docker; then
-      die "Docker is not healthy. Start Docker (e.g., systemctl start docker) and re-run ./start.sh"
-    fi
-  fi
-  if [[ "$STACK_MODE" == "local" ]]; then
-    if ! preflight_k3d; then
-      die "k3d is not responding. Ensure Docker is running and re-run ./start.sh"
-    fi
-    load_port_state
-  fi
+  load_port_state
 
   if [[ "$NUCLEAR_RESET" == "true" ]]; then
     nuclear_reset
   fi
 
-  if [[ "$STACK_MODE" == "local" ]]; then
-    start_cluster_if_needed
-  else
-    if [[ ! -f "$KUBECONFIG_FILE" ]]; then
-      die "Kubeconfig not found at ${KUBECONFIG_FILE}. Set KUBECONFIG_FILE for VPS."
-    fi
-    if ! kctl get ns >/dev/null 2>&1; then
-      die "Kubernetes is not reachable via ${KUBECONFIG_FILE}."
-    fi
-  fi
+  start_cluster_if_needed
   wait_for_ingress
 
   ensure_sample_csv
   generate_products_script
 
-  if [[ "$BUILD_WORDPRESS_IMAGE" == "true" ]]; then
-    build_wordpress_image
-    if [[ "$STACK_MODE" == "local" ]]; then
-      import_k3d_image
-    else
-      import_k3s_image
-    fi
-  fi
+  build_wordpress_image
+  import_k3d_image
 
   kill_running_processes
   cleanup_failed_stores
 
-  if [[ -z "${BASE_DOMAIN:-}" ]]; then
-    if [[ "$STACK_MODE" == "vps" ]]; then
-      die "BASE_DOMAIN is required for VPS (example: BASE_DOMAIN=20.244.48.232.nip.io)."
-    fi
-    INGRESS_IP="$(kctl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
-    if [[ -z "$INGRESS_IP" ]]; then
-      BASE_DOMAIN="127.0.0.1.nip.io"
-    else
-      BASE_DOMAIN="${INGRESS_IP}.nip.io"
-    fi
+  INGRESS_IP="$(kctl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
+  if [[ -z "$INGRESS_IP" ]]; then
+    BASE_DOMAIN="127.0.0.1.nip.io"
+  else
+    BASE_DOMAIN="${INGRESS_IP}.nip.io"
   fi
 
   STORAGE_CLASS="${STORAGE_CLASS:-local-path}"
@@ -197,10 +154,8 @@ main() {
   start_orchestrator
   start_dashboard
 
-  if [[ "$STACK_MODE" == "local" ]]; then
-    watch_admin_ports >/dev/null 2>&1 &
-    ADMIN_WATCH_PID=$!
-  fi
+  watch_admin_ports >/dev/null 2>&1 &
+  ADMIN_WATCH_PID=$!
 
   print_summary
   wait
