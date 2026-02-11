@@ -447,6 +447,9 @@ func (o *orchestrator) syncWithCluster(ctx context.Context) error {
 		if !strings.HasPrefix(ns.Name, "store-") {
 			continue
 		}
+		if ns.DeletionTimestamp != nil {
+			continue
+		}
 		clusterNamespaces[ns.Name] = struct{}{}
 		id := strings.TrimPrefix(ns.Name, "store-")
 		if _, ok := o.stores.Get(id); ok {
@@ -524,6 +527,9 @@ func (o *orchestrator) reconcileStores(ctx context.Context) {
 		store.Error = errMsg
 		if status == StatusReady {
 			store.WasReady = true
+			if store.ProvisionedAt.IsZero() {
+				store.ProvisionedAt = time.Now().UTC()
+			}
 		}
 		store.UpdatedAt = time.Now().UTC()
 		o.stores.Update(store)
