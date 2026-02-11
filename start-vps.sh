@@ -27,6 +27,7 @@ fi
 
 export STACK_MODE
 export KUBECONFIG_FILE
+export KUBE_CONTEXT=""
 export API_ADDR
 export DASH_ADDR
 export VALUES_FILE

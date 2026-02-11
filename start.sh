@@ -146,6 +146,8 @@ main() {
       die "k3d is not responding. Ensure Docker is running and re-run ./start.sh"
     fi
     load_port_state
+  else
+    KUBE_CONTEXT=""
   fi
 
   if [[ "$NUCLEAR_RESET" == "true" ]]; then
