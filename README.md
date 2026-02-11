@@ -162,14 +162,14 @@ VALUES_FILE=../charts/ecommerce-store/values-prod.yaml \
 STORAGE_CLASS=local-path \
 go run .
 
-## VPS runbook (Azure k3s)
-Use this if you are deploying to a single Azure VM and want stable wildcard domains.
+## VPS runbook (Azure k3s + NGINX + nip.io)
+Use this if you are deploying to a single Azure VM and want stable nip.io URLs.
 
 ### 0) VM baseline
 - Size: Standard_D8as_v4 (smaller works for demos).
 - OS: Ubuntu 22.04 LTS.
 - Public IP: Static.
-- Open ports: 22, 80, 443. (Optional: 6443 for remote kubectl.)
+- Open ports: 22, 80, 443, 5173 (dashboard), 8080 (API). Optional: 6443 for remote kubectl.
 
 ### 1) SSH
 ```bash
@@ -184,47 +184,62 @@ sudo apt-get update -y
 sudo apt-get install -y curl ca-certificates
 ```
 
-### 3) Install k3s (single-node)
+### 3) Install k3s without Traefik
 ```bash
-curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
+curl -sfL https://get.k3s.io | sh -s - --disable traefik --write-kubeconfig-mode 644
 kubectl get nodes
 ```
 
-### 4) Ingress choice (recommended: Traefik)
-k3s ships with Traefik. For simplicity and fewer moving parts, keep Traefik.
-If you install nginx ingress, also update `values-prod.yaml` to use:
-`ingress.className: "nginx"` and `networkPolicy.allowIngressFromNamespace: ingress-nginx`.
-
-### 5) DNS (use your purchased domain)
-Create a wildcard DNS record:
-```
-*.stores.example.com  ->  <your-public-ip>
+### 4) Install Helm + NGINX ingress
+```bash
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+helm install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx --create-namespace
+kubectl get ingressclass
 ```
 
-### 6) Clone repo
+### 5) Clone repo
 ```bash
 git clone https://github.com/nandan2003/urumi-kubernetes.git
 cd urumi-kubernetes
 ```
 
-### 7) Use values-prod.yaml (Traefik + kube-system allowlist)
-`charts/ecommerce-store/values-prod.yaml` is already set for Traefik:
-- `ingress.className: traefik`
-- `networkPolicy.allowIngressFromNamespace: kube-system`
+### 6) Update repo (if already cloned)
+```bash
+git pull
+```
 
-### 8) Start orchestrator (prod values)
+### 7) Install Go 1.22 (required for orchestrator)
+```bash
+cd /tmp
+curl -fsSL https://go.dev/dl/go1.22.6.linux-amd64.tar.gz -o go1.22.6.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go
+sudo tar -C /usr/local -xzf go1.22.6.linux-amd64.tar.gz
+echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+source ~/.bashrc
+go version
+```
+
+### 8) Start orchestrator (prod values + nip.io)
 ```bash
 cd orchestrator
-STORE_BASE_DOMAIN=stores.example.com \
+STORE_BASE_DOMAIN=<public-ip>.nip.io \
 VALUES_FILE=../charts/ecommerce-store/values-prod.yaml \
-INGRESS_CLASS=traefik \
+INGRESS_CLASS=nginx \
 STORAGE_CLASS=local-path \
 go run .
 ```
-If you installed Longhorn, use `STORAGE_CLASS=longhorn`.
 
-### 9) Run dashboard
-On VPS:
+### 9) Install Node 20 for dashboard
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+node -v
+npm -v
+```
+
+### 10) Run dashboard
 ```bash
 cd ../dashboard
 VITE_API_BASE=http://<public-ip>:8080 npm install
@@ -232,33 +247,29 @@ VITE_API_BASE=http://<public-ip>:8080 npm run dev -- --host 0.0.0.0 --port 5173
 ```
 Open `http://<public-ip>:5173`.
 
-### 10) Create a store
+### 11) Create a store
 From the dashboard:
 - Name: `nike`
 - Engine: WooCommerce
 
 Expected URL:
 ```
-http://nike.stores.example.com
+http://nike.<public-ip>.nip.io
 ```
 
-### 11) Admin password retrieval
+### 12) Admin password retrieval
 ```bash
 kubectl -n store-nike get secret urumi-nike-ecommerce-store-secrets \
   -o jsonpath='{.data.wp-admin-password}' | base64 -d
 ```
 
-### 12) If you see 404
-- Wait 1–2 minutes (DNS/Ingress propagation).
+### 13) If you see 404
+- Wait 1–2 minutes (Ingress propagation).
 - Check ingress:
 ```bash
-kubectl get pods -A | grep -i traefik
+kubectl -n ingress-nginx get pods
+kubectl get ing -A
 ```
-
-### 13) Optional hardening
-- NetworkPolicy already enabled in `values-prod.yaml`.
-- Increase resource limits in `values-prod.yaml` if needed.
-- Use Longhorn for more reliable persistent storage.
 ```
 
 ## Notes
