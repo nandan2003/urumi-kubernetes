@@ -3,6 +3,12 @@
 
 build_wordpress_image() {
   # Build a local WordPress image for faster installs.
+  if [[ "${FORCE_REBUILD_WORDPRESS:-false}" != "true" ]]; then
+    if docker image inspect urumi-wordpress:latest >/dev/null 2>&1; then
+      log "WordPress image already present; skipping build (set FORCE_REBUILD_WORDPRESS=true to rebuild)."
+      return
+    fi
+  fi
   log "Building custom WordPress image..."
   if ! docker build -t urumi-wordpress:latest -f "$ROOT_DIR/Dockerfile" "$ROOT_DIR"; then
     die "Docker build failed."
