@@ -221,17 +221,7 @@ source ~/.bashrc
 go version
 ```
 
-### 8) Start orchestrator (prod values + nip.io)
-```bash
-cd orchestrator
-STORE_BASE_DOMAIN=<public-ip>.nip.io \
-VALUES_FILE=../charts/ecommerce-store/values-prod.yaml \
-INGRESS_CLASS=nginx \
-STORAGE_CLASS=local-path \
-go run .
-```
-
-### 9) Install Node 20 for dashboard
+### 8) Install Node 20 for dashboard
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs
@@ -239,15 +229,17 @@ node -v
 npm -v
 ```
 
-### 10) Run dashboard
+### 9) One-click start (recommended)
 ```bash
-cd ../dashboard
-VITE_API_BASE=http://<public-ip>:8080 npm install
-VITE_API_BASE=http://<public-ip>:8080 npm run dev -- --host 0.0.0.0 --port 5173
+cd ~/urumi-kubernetes
+VM_PUBLIC_IP=<public-ip> ./start-vps.sh
 ```
-Open `http://<public-ip>:5173`.
+Open:
+```
+http://dashboard.<public-ip>.nip.io:5173
+```
 
-### 11) Create a store
+### 10) Create a store
 From the dashboard:
 - Name: `nike`
 - Engine: WooCommerce
@@ -257,18 +249,39 @@ Expected URL:
 http://nike.<public-ip>.nip.io
 ```
 
-### 12) Admin password retrieval
+### 11) Admin password retrieval
 ```bash
 kubectl -n store-nike get secret urumi-nike-ecommerce-store-secrets \
   -o jsonpath='{.data.wp-admin-password}' | base64 -d
 ```
 
-### 13) If you see 404
+### 12) If you see 404
 - Wait 1–2 minutes (Ingress propagation).
 - Check ingress:
 ```bash
 kubectl -n ingress-nginx get pods
 kubectl get ing -A
+```
+
+### 13) If the dashboard shows API Offline
+- From your PC:
+```bash
+curl http://<public-ip>:8080/healthz
+```
+- Ensure Azure NSG allows inbound **8080** and **5173**.
+
+Manual run (debug):
+```bash
+cd orchestrator
+STORE_BASE_DOMAIN=<public-ip>.nip.io \
+VALUES_FILE=../charts/ecommerce-store/values-prod.yaml \
+INGRESS_CLASS=nginx \
+STORAGE_CLASS=local-path \
+go run .
+
+cd ../dashboard
+VITE_API_BASE=http://<public-ip>:8080 npm install
+VITE_API_BASE=http://<public-ip>:8080 npm run dev -- --host 0.0.0.0 --port 5173
 ```
 ```
 
