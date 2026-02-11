@@ -14,6 +14,18 @@ kill_running_processes() {
   stop_all_port_forwards
 }
 
+python_bin() {
+  if command -v python3 >/dev/null 2>&1; then
+    echo python3
+    return 0
+  fi
+  if command -v python >/dev/null 2>&1; then
+    echo python
+    return 0
+  fi
+  return 1
+}
+
 nuclear_reset() {
   # Full reset: delete cluster, logs, and cached data.
   log "Nuclear reset: deleting cluster, killing processes, wiping local data..."
@@ -30,7 +42,12 @@ nuclear_reset() {
 finalize_namespace() {
   # Remove finalizers to unblock terminating namespaces.
   local ns="$1"
-  kctl get ns "$ns" -o json 2>/dev/null | python - <<'PY' | kctl replace --raw "/api/v1/namespaces/${ns}/finalize" -f - >/dev/null 2>&1 || true
+  local py
+  py="$(python_bin)" || {
+    warn "python not found; skipping finalizer cleanup for ${ns}"
+    return
+  }
+  kctl get ns "$ns" -o json 2>/dev/null | "$py" - <<'PY' | kctl replace --raw "/api/v1/namespaces/${ns}/finalize" -f - >/dev/null 2>&1 || true
 import json, sys
 raw = sys.stdin.read().strip()
 if not raw:
@@ -71,7 +88,12 @@ cleanup_failed_stores() {
   fi
   log "Cleaning failed/stuck store namespaces..."
   KEEP_FILE="$(mktemp)"
-  python - <<PY >"$KEEP_FILE"
+  py="$(python_bin)" || {
+    warn "python not found; skipping cleanup of failed stores."
+    rm -f "$KEEP_FILE"
+    return
+  }
+  "$py" - <<PY >"$KEEP_FILE"
 import json, pathlib, datetime
 path = pathlib.Path("$STORES_JSON")
 if not path.exists():

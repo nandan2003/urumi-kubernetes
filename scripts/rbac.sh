@@ -33,13 +33,7 @@ setup_orchestrator_rbac() {
   if [[ -z "$ca_data" ]]; then
     ca_path="$(kubectl --kubeconfig "$KUBECONFIG_FILE" config view --raw -o jsonpath='{.clusters[0].cluster.certificate-authority}' 2>/dev/null)"
     if [[ -n "$ca_path" && -f "$ca_path" ]]; then
-      ca_data="$(CA_PATH="$ca_path" python - <<'PY'
-import base64
-import os
-with open(os.environ["CA_PATH"], "rb") as f:
-  print(base64.b64encode(f.read()).decode())
-PY
-)"
+      ca_data="$(base64 -w 0 "$ca_path" 2>/dev/null || base64 "$ca_path" | tr -d '\n')"
     fi
   fi
 
@@ -50,6 +44,7 @@ PY
   fi
 
   ORCH_KUBECONFIG="$ROOT_DIR/.kube/orchestrator-sa.yaml"
+  mkdir -p "$(dirname "$ORCH_KUBECONFIG")"
   cat >"$ORCH_KUBECONFIG" <<EOF
 apiVersion: v1
 kind: Config

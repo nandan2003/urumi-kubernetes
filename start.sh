@@ -148,6 +148,7 @@ main() {
     load_port_state
   else
     KUBE_CONTEXT=""
+    log "Using k3s cluster via ${KUBECONFIG_FILE}"
   fi
 
   if [[ "$NUCLEAR_RESET" == "true" ]]; then
