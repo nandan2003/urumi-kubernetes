@@ -78,6 +78,14 @@ data:
     wp option update woocommerce_onboarding_profile '{"skipped":true}' --format=json --allow-root || true
     wp option update woocommerce_task_list_hidden yes --allow-root || true
 
+    # Ensure the store is publicly visible (disable "coming soon" if present).
+    for key in $(wp option list --search='woocommerce_coming_soon%' --field=option_name --allow-root 2>/dev/null); do
+      wp option update "$key" no --allow-root || true
+    done
+    for key in $(wp option list --search='woocommerce_store_visibility%' --field=option_name --allow-root 2>/dev/null); do
+      wp option update "$key" live --allow-root || true
+    done
+
     if [ -f /scripts/products.sh ]; then
       sh /scripts/products.sh || true
     else
