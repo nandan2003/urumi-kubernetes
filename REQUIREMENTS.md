@@ -19,6 +19,7 @@ with minor environment-specific notes.
 - Open ports: **22**, **80**, **443**, **8080** (API), **5173** (dashboard)
 - Ingress controller: **Traefik (k3s default)** or **NGINX**
 - Persistent storage class: `local-path` (single node) or `longhorn`
+- **Docker Engine** (required to build the custom WordPress image for k3s)
 
 ## Optional (nice to have)
 - `python3` (for product script generation)

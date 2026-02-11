@@ -229,7 +229,15 @@ node -v
 npm -v
 ```
 
-### 9) One-click start (recommended)
+### 9) Install Docker (required for the custom WordPress image)
+```bash
+sudo apt-get install -y docker.io
+sudo usermod -aG docker $USER
+newgrp docker
+docker version
+```
+
+### 10) One-click start (recommended)
 ```bash
 cd ~/urumi-kubernetes
 VM_PUBLIC_IP=<public-ip> ./start-vps.sh
@@ -239,7 +247,7 @@ Open:
 http://dashboard.<public-ip>.nip.io:5173
 ```
 
-### 10) Create a store
+### 11) Create a store
 From the dashboard:
 - Name: `nike`
 - Engine: WooCommerce
@@ -249,13 +257,13 @@ Expected URL:
 http://nike.<public-ip>.nip.io
 ```
 
-### 11) Admin password retrieval
+### 12) Admin password retrieval
 ```bash
 kubectl -n store-nike get secret urumi-nike-ecommerce-store-secrets \
   -o jsonpath='{.data.wp-admin-password}' | base64 -d
 ```
 
-### 12) If you see 404
+### 13) If you see 404
 - Wait 1–2 minutes (Ingress propagation).
 - Check ingress:
 ```bash
@@ -263,7 +271,7 @@ kubectl -n ingress-nginx get pods
 kubectl get ing -A
 ```
 
-### 13) If the dashboard shows API Offline
+### 14) If the dashboard shows API Offline
 - From your PC:
 ```bash
 curl http://<public-ip>:8080/healthz

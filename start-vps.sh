@@ -24,6 +24,7 @@ DASH_LOG="$ROOT_DIR/dashboard/dashboard.log"
 require_cmd kubectl
 require_cmd go
 require_cmd npm
+require_cmd k3s
 
 if [[ -z "$VM_PUBLIC_IP" ]]; then
   die "VM_PUBLIC_IP is required (example: VM_PUBLIC_IP=20.244.48.232)"
@@ -36,6 +37,30 @@ fi
 if ! kubectl --kubeconfig "$KUBECONFIG_FILE" get nodes >/dev/null 2>&1; then
   die "Kubernetes is not reachable via $KUBECONFIG_FILE"
 fi
+
+BUILD_WORDPRESS_IMAGE="${BUILD_WORDPRESS_IMAGE:-true}"
+
+build_wordpress_image() {
+  if [[ "$BUILD_WORDPRESS_IMAGE" != "true" ]]; then
+    warn "Skipping WordPress image build (BUILD_WORDPRESS_IMAGE=$BUILD_WORDPRESS_IMAGE)."
+    return
+  fi
+  require_cmd docker
+  log "Building custom WordPress image..."
+  if ! docker build -t urumi-wordpress:latest -f "$ROOT_DIR/Dockerfile" "$ROOT_DIR"; then
+    die "Docker build failed."
+  fi
+  local tar="/tmp/urumi-wordpress.tar"
+  log "Importing image into k3s containerd..."
+  if ! docker save urumi-wordpress:latest -o "$tar"; then
+    die "Docker save failed."
+  fi
+  if ! sudo k3s ctr images import "$tar"; then
+    rm -f "$tar"
+    die "k3s image import failed."
+  fi
+  rm -f "$tar"
+}
 
 kill_pid_file() {
   local pid_file="$1"
@@ -65,6 +90,8 @@ trap cleanup INT TERM EXIT
 
 kill_pid_file "$ROOT_DIR/orchestrator/.orchestrator.pid" "orchestrator"
 kill_pid_file "$ROOT_DIR/dashboard/.dashboard.pid" "vite"
+
+build_wordpress_image
 
 log "Starting orchestrator..."
 cd "$ROOT_DIR/orchestrator" || exit 1
