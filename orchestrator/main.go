@@ -514,6 +514,9 @@ func (o *orchestrator) reconcileStores(ctx context.Context) {
 			o.stores.Remove(store.ID)
 			continue
 		}
+		if store.Status == StatusFailed && status == StatusProvisioning {
+			continue
+		}
 		if status == store.Status && errMsg == store.Error {
 			continue
 		}

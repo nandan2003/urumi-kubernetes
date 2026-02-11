@@ -26,3 +26,12 @@ networkPolicy:
   allowIngressFromNamespace: ingress-nginx
   allowIngressFromSameNamespace: true
   allowEgressToInternet: false
+
+# Quotas for VPS: allow MySQL + WordPress + wpcli job without exceeding limits.
+quota:
+  enabled: true
+  requestsCpu: "1500m"
+  requestsMemory: 2Gi
+  limitsCpu: "3"
+  limitsMemory: 3Gi
+  requestsStorage: 10Gi
