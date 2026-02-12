@@ -120,6 +120,44 @@ kubectl -n store-<id> get secret urumi-<id>-ecommerce-store-secrets \
   -o jsonpath='{.data.wp-admin-password}' | base64 -d
 ```
 
+## Database inspection (MySQL)
+Replace `<id>` with your store id (e.g., `nike`).
+
+### Full database dump (everything)
+```bash
+ID=<id>
+NS="store-$ID"
+REL="urumi-$ID-ecommerce-store"
+
+MYSQL_POD=$(kubectl -n "$NS" get pods -l app.kubernetes.io/component=mysql -o jsonpath='{.items[0].metadata.name}')
+ROOT_PW=$(kubectl -n "$NS" get secret "$REL-secrets" -o jsonpath='{.data.mysql-root-password}' | base64 -d)
+
+kubectl -n "$NS" exec "$MYSQL_POD" -- \
+  mysqldump -uroot -p"$ROOT_PW" --single-transaction --routines --triggers --events wordpress
+```
+
+### List all tables
+```bash
+kubectl -n "$NS" exec "$MYSQL_POD" -- \
+  mysql -uroot -p"$ROOT_PW" -e "USE wordpress; SHOW TABLES;"
+```
+
+### List all columns (every table)
+```bash
+kubectl -n "$NS" exec "$MYSQL_POD" -- \
+  mysql -uroot -p"$ROOT_PW" -e "
+SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT
+FROM information_schema.columns
+WHERE table_schema='wordpress'
+ORDER BY TABLE_NAME, ORDINAL_POSITION;"
+```
+
+### Schema-only dump
+```bash
+kubectl -n "$NS" exec "$MYSQL_POD" -- \
+  mysqldump -uroot -p"$ROOT_PW" --no-data wordpress
+```
+
 If you change the password in WordPress, the secret still contains the original value.
 
 To reset the admin password manually (example):
@@ -162,6 +200,47 @@ VALUES_FILE=../charts/ecommerce-store/values-prod.yaml \
 STORAGE_CLASS=local-path \
 go run .
 ```
+
+## Production story (local → VPS parity)
+This project runs the **same Helm chart** locally and on VPS. Only the **values file and env vars** change.
+
+### Parity model
+- **Chart**: `charts/ecommerce-store` (same for local + VPS)
+- **Local values**: `values-local.yaml`
+- **VPS values**: `values-prod.yaml`
+- **Orchestrator**: same binary + Helm SDK flow
+
+### What changes between local and VPS (values/env)
+- **Ingress class**:
+  - Local: often nginx in k3d/kind (`INGRESS_CLASS=nginx`)
+  - VPS: nginx in k3s (`INGRESS_CLASS=nginx`)
+- **Base domain**:
+  - Local: `127.0.0.1.nip.io`
+  - VPS: `<public-ip>.nip.io` or wildcard DNS
+- **Storage class**:
+  - Local: `local-path` (k3d/kind default)
+  - VPS: `local-path` or CSI (Longhorn, etc.)
+- **NetworkPolicy**:
+  - Local: usually off
+  - VPS: enabled with ingress allowlist
+
+### Ingress exposure on VPS
+Ensure nginx is reachable externally:
+- **Ports open**: 80/443 on VM security group/NSG
+- **Ingress service**: `ingress-nginx-controller` must be exposed (LoadBalancer/NodePort)
+- **DNS**: wildcard record to VM IP (or nip.io)
+
+### Secrets strategy
+Secrets are generated per store at provision time and stored in Kubernetes Secrets.
+No secrets are hardcoded in source control.
+
+### Clean teardown
+Store deletion removes the Helm release and deletes the namespace. Zombie finalizers
+are cleaned if necessary.
+
+### Upgrade/Rollback
+Each store is a Helm release (`urumi-<id>`). Upgrades and rollbacks use Helm with `--atomic`
+and `--reuse-values` to preserve data.
 
 ## Notes
 - Secrets are injected at install time by the orchestrator (no hardcoded secrets in repo).
