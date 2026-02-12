@@ -1,6 +1,6 @@
-# Urumi Store Provisioning Platform — Round 1 (Kubernetes)
+# Urumi Store Provisioning Platform - Round 1 (Kubernetes)
 
-This repo implements a **Kubernetes‑native store provisioning platform** that runs locally and on a VPS using the **same Helm chart** with different values files. It is aligned to the requirements in `Urumi SDE Internship - Round 1.txt`.
+This repo implements a **Kubernetes‑native store provisioning platform** that runs locally and on an Azure VM using the **same Helm chart** with different values files. It is built as a part of `Urumi SDE Internship` hiring process.
 
 ---
 
@@ -32,7 +32,7 @@ Build a small **store provisioning platform** that works on local Kubernetes and
 A provisioned store supports placing an order end‑to‑end:
 1. Open storefront URL
 2. Add product to cart
-3. Checkout using COD (enabled by WP‑CLI job)
+3. Checkout using COD
 4. Verify order in WooCommerce admin
 
 ---
@@ -145,7 +145,7 @@ helm install ingress-nginx ingress-nginx/ingress-nginx \
 > If k3s Traefik is enabled, either disable it or switch `INGRESS_CLASS=traefik`.
 
 ### 8.3 Open ports
-- **80/443** on your VM firewall / security group.
+- **80, 443, 8080, 5173, 6443** on your VM firewall / security group.
 
 ### 8.4 Start on VPS
 ```bash
