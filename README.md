@@ -4,6 +4,10 @@ This repo implements a **Kubernetes‑native store provisioning platform** that 
 
 ---
 
+![Architecture Diagram](image3x.png)
+
+---
+
 ## 1) Problem statement (Round 1)
 Build a small **store provisioning platform** that works on local Kubernetes and can run in production (k3s on a VPS) **with configuration changes only** (via Helm values).
 
