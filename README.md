@@ -1,129 +1,221 @@
-# Urumi Store Provisioning Platform (Round 1)
+# Urumi Store Provisioning Platform — Round 1 (Kubernetes)
 
-This repo implements a Kubernetes-native store provisioning platform that works on local clusters and production-like k3s using the same Helm chart (different values files).
+This repo implements a **Kubernetes‑native store provisioning platform** that runs locally and on a VPS using the **same Helm chart** with different values files. It is aligned to the requirements in `Urumi SDE Internship - Round 1.txt`.
 
-## What you get
-- React dashboard to create/list/delete stores.
-- Go orchestrator API that provisions stores via Helm SDK (namespace-per-store).
-- WooCommerce engine fully automated with WP-CLI job (Medusa stub included). WordPress image pinned to 6.9.1 for WooCommerce compatibility.
-- Helm chart with PVCs, probes, Ingress, Secrets, ResourceQuota, LimitRange.
-- Auto-import of sample products from `charts/ecommerce-store/files/sample-products.csv`.
+---
 
-## Architecture (high-level)
-- **Dashboard (React)** -> calls **Orchestrator API**
-- **Orchestrator (Go)** -> Helm SDK installs chart into dedicated namespace
-- **Helm chart** -> WordPress + MySQL + WP-CLI post-install job
+## 1) Problem statement (Round 1)
+Build a small **store provisioning platform** that works on local Kubernetes and can run in production (k3s on a VPS) **with configuration changes only** (via Helm values).
 
-## Prerequisites
-- Kubernetes cluster: kind / k3d / minikube (k3s for prod)
-- `kubectl`, `helm`, `go`, `node`/`npm`
-- Ingress controller (nginx recommended)
+**Scope implemented in this repo**
+- **WooCommerce** engine is fully implemented (WordPress + WooCommerce + auto provisioning via WP‑CLI job).
+- **Medusa** is **stubbed** (placeholder deployment + service) to keep the architecture ready for a future engine.
 
-## Local setup (kind example)
-1. Create a kind cluster with host port 80/443 mapped (so nip.io hosts resolve locally):
+---
 
+## 2) User story coverage
+**Supported today**
+- Open a React dashboard.
+- View existing stores and their status.
+- Create a new store (WooCommerce).
+- Provision multiple stores (concurrently, with concurrency limits).
+- See status + URL + timestamps.
+- Delete a store and clean up all resources.
+
+**Engines**
+- ✅ **WooCommerce** (fully working end‑to‑end)
+- ⚠️ **Medusa** (stub only in Round 1; architecture supports a second engine later)
+
+---
+
+## 3) Definition of Done (WooCommerce)
+A provisioned store supports placing an order end‑to‑end:
+1. Open storefront URL
+2. Add product to cart
+3. Checkout using COD (enabled by WP‑CLI job)
+4. Verify order in WooCommerce admin
+
+---
+
+## 4) Architecture & responsibilities (high level)
+**Components**
+- **Dashboard (React)**: UI to create/list/delete stores and show status.
+- **Orchestrator (Go)**: HTTP API + Helm SDK provisioning + reconciliation loop.
+- **Helm chart (`charts/ecommerce-store`)**: WordPress + MySQL + WP‑CLI job + K8s resources.
+
+**Key files**
+- `dashboard/` — React UI
+- `orchestrator/` — API + store manager + Helm provisioning
+- `charts/ecommerce-store/` — Helm chart + values for local/prod
+- `start.sh` — local one‑command start (k3d)
+- `start-vps.sh` — VPS wrapper (k3s)
+- `setup.sh` — optional dependency installer (Linux only)
+
+---
+
+## 5) Kubernetes + Helm requirements mapping
+**Requirement** → **Where it’s implemented**
+- Local Kubernetes (k3d/kind/minikube) → `start.sh` (k3d) + Helm chart
+- Production‑like VPS (k3s) → `start-vps.sh`, `values-prod.yaml`
+- Helm required (no Kustomize) → `orchestrator/provisioner.go` (Helm SDK)
+- K8s‑native provisioning (Deployments/StatefulSets/Jobs/etc.) → `charts/ecommerce-store/templates/*`
+- Multi‑store isolation (namespace per store) → `orchestrator/store_manager.go` + Helm installs into `store-<id>`
+- Persistent DB storage → `mysql-statefulset.yaml` + PVC templates
+- Ingress for stable URLs → `ingress.yaml` with host‑based routing
+- Readiness/liveness → `deployment.yaml`/`mysql-statefulset.yaml`
+- Clean teardown → `orchestrator/cleanup.go` + Helm uninstall + namespace delete
+- No hardcoded secrets → secrets generated in `orchestrator/provisioner.go` and stored in K8s `Secret`
+
+---
+
+## 6) Prerequisites
+**Local (k3d default)**
+- Docker
+- kubectl
+- Helm
+- k3d
+- Go **1.25.x** (from `orchestrator/go.mod`)
+- Node **20.x** (Vite requirement)
+
+**VPS (k3s)**
+- k3s
+- kubectl
+- Go **1.25.x**
+- Node **20.x**
+- Docker (required to build/import the WordPress image)
+
+### Optional setup helper
+`setup.sh` checks and (optionally) installs prerequisites on Linux:
 ```bash
-cat <<'KIND' > /tmp/kind.yaml
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-nodes:
-  - role: control-plane
-    extraPortMappings:
-      - containerPort: 80
-        hostPort: 80
-      - containerPort: 443
-        hostPort: 443
-KIND
-kind create cluster --config /tmp/kind.yaml
+./setup.sh --mode both          # dry-run (safe)
+./setup.sh --apply --mode both  # install (prompts before changes)
 ```
+Windows: use **WSL2** (Ubuntu) and run the setup inside WSL.
 
-2. Install nginx ingress:
+---
 
+## 7) Local setup (k3d, recommended)
+This is the **fastest, supported local path**.
+
+### 7.1 Install ingress‑nginx once
+`start.sh` expects an ingress controller to exist. Install nginx ingress once per cluster:
 ```bash
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
-helm install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx --create-namespace
+helm install ingress-nginx ingress-nginx/ingress-nginx \
+  -n ingress-nginx --create-namespace
 ```
 
-3. Run orchestrator API:
-
-```bash
-cd orchestrator
-go run .
-```
-
-Optional env vars:
-- `STORE_BASE_DOMAIN=127.0.0.1.nip.io`
-- `VALUES_FILE=../charts/ecommerce-store/values-local.yaml`
-- `INGRESS_CLASS=nginx`
-- `STORAGE_CLASS=local-path` (required if your cluster has no default StorageClass)
-
-4. Run dashboard:
-
-```bash
-cd dashboard
-npm install
-VITE_API_BASE=http://localhost:8080 npm run dev
-```
-
-Open the dashboard at `http://localhost:5173`.
-
-## One-command local start
-
+### 7.2 One‑command local start
 ```bash
 ./start.sh
 ```
+This will:
+- create/start a **k3d** cluster (`urumi-local`)
+- build & import the `urumi-wordpress` image
+- start **orchestrator** and **dashboard**
 
-This starts the orchestrator + dashboard, detects an ingress base domain, and prints URLs. Pass a store id to enable WP admin port-forwarding:
+**Local URL pattern**
+- `http://<store-id>.127.0.0.1.nip.io` (default)
 
+### 7.3 Optional overrides
 ```bash
-./start.sh store-one
+INGRESS_CLASS=nginx \
+STORAGE_CLASS=local-path \
+VALUES_FILE=charts/ecommerce-store/values-local.yaml \
+./start.sh
 ```
 
-## Create a store
-Use the dashboard or POST directly:
+---
 
+## 8) VPS setup (k3s)
+### 8.1 Install k3s (example)
+```bash
+curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
+```
+
+### 8.2 Install nginx ingress
+```bash
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+helm install ingress-nginx ingress-nginx/ingress-nginx \
+  -n ingress-nginx --create-namespace
+```
+
+> If k3s Traefik is enabled, either disable it or switch `INGRESS_CLASS=traefik`.
+
+### 8.3 Open ports
+- **80/443** on your VM firewall / security group.
+
+### 8.4 Start on VPS
+```bash
+VM_PUBLIC_IP=<your-public-ip> ./start-vps.sh
+```
+Defaults:
+- `BASE_DOMAIN=<VM_PUBLIC_IP>.nip.io`
+- `INGRESS_CLASS=nginx`
+- `VALUES_FILE=charts/ecommerce-store/values-prod.yaml`
+
+**VPS URL pattern**
+- Dashboard: `http://dashboard.<VM_PUBLIC_IP>.nip.io:5173`
+- Store: `http://<store-id>.<VM_PUBLIC_IP>.nip.io`
+
+---
+
+## 9) Create a store
+**Via dashboard**: click **Create Store** → choose WooCommerce.
+
+**Via API**:
 ```bash
 curl -X POST http://localhost:8080/api/stores \
   -H 'Content-Type: application/json' \
-  -d '{"name":"Store One","engine":"woocommerce"}'
+  -d '{"name":"nike","engine":"woocommerce"}'
 ```
 
-The store URL will look like:
-- `http://store-one.127.0.0.1.nip.io`
+---
 
-If provisioning fails due to storage, confirm your StorageClass:
-
+## 10) Verify resources after create
 ```bash
-kubectl get storageclass
+ID=nike
+NS="store-$ID"
+REL="urumi-$ID-ecommerce-store"
+
+kubectl get ns | grep "$NS"
+kubectl -n "$NS" get all
+kubectl -n "$NS" get pvc
+kubectl -n "$NS" get ing
+kubectl -n "$NS" get jobs
+kubectl -n "$NS" logs "job/$REL-wpcli" --tail=200
 ```
 
-## Definition of Done (WooCommerce)
-1. Open storefront URL.
-2. Add the seeded product to cart.
-3. Checkout using COD (enabled via WP-CLI job).
-4. Confirm order in WP admin.
-
-Retrieve admin password (replace `<id>` with the store id from the dashboard):
-
+Ingress host check:
 ```bash
-KUBECONFIG=.kube/k3d-urumi-local.yaml kubectl -n store-<id> get secret urumi-<id>-ecommerce-store-secrets \
-  -o jsonpath='{.data.wp-admin-password}' | base64 -d
+curl -I -H "Host: ${ID}.<base-domain>" http://127.0.0.1
 ```
 
-Admin user/email come from `WP_ADMIN_USER` / `WP_ADMIN_EMAIL` (defaults `admin` / `admin@example.com`).
-The admin password is generated per store and stored in the Kubernetes Secret. You can
-retrieve the initial password with:
+---
 
+## 11) Place an order (Definition of Done)
+1. Open `http://<store-id>.<base-domain>`
+2. Add product to cart
+3. Checkout (COD is enabled by WP‑CLI job)
+4. Verify order in WP admin: `http://<store-id>.<base-domain>/wp-admin`
+
+---
+
+## 12) Admin credentials (WooCommerce)
 ```bash
 kubectl -n store-<id> get secret urumi-<id>-ecommerce-store-secrets \
-  -o jsonpath='{.data.wp-admin-password}' | base64 -d
+  -o jsonpath='{.data.wp-admin-password}' | base64 -d; echo
 ```
+Defaults:
+- Admin user: `admin`
+- Admin email: `admin@example.com`
+- Password is **generated per store** (stored in Secret)
 
-## Database inspection (MySQL)
-Replace `<id>` with your store id (e.g., `nike`).
+---
 
-### Full database dump (everything)
+## 13) Database inspection (MySQL)
 ```bash
 ID=<id>
 NS="store-$ID"
@@ -133,181 +225,115 @@ MYSQL_POD=$(kubectl -n "$NS" get pods -l app.kubernetes.io/component=mysql -o js
 ROOT_PW=$(kubectl -n "$NS" get secret "$REL-secrets" -o jsonpath='{.data.mysql-root-password}' | base64 -d)
 
 kubectl -n "$NS" exec "$MYSQL_POD" -- \
-  mysqldump -uroot -p"$ROOT_PW" --single-transaction --routines --triggers --events wordpress
-```
-
-### List all tables
-```bash
-kubectl -n "$NS" exec "$MYSQL_POD" -- \
   mysql -uroot -p"$ROOT_PW" -e "USE wordpress; SHOW TABLES;"
 ```
 
-### List all columns (every table)
+Schema (all columns):
 ```bash
 kubectl -n "$NS" exec "$MYSQL_POD" -- \
   mysql -uroot -p"$ROOT_PW" -e "
-SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT
+SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE
 FROM information_schema.columns
 WHERE table_schema='wordpress'
 ORDER BY TABLE_NAME, ORDINAL_POSITION;"
 ```
 
-### Schema-only dump
+---
+
+## 14) Delete a store (and verify cleanup)
 ```bash
-kubectl -n "$NS" exec "$MYSQL_POD" -- \
-  mysqldump -uroot -p"$ROOT_PW" --no-data wordpress
+curl -X DELETE http://localhost:8080/api/stores/nike
+
+kubectl get ns | grep store-nike
+helm list -A | grep urumi-nike
+kubectl get pvc -A | grep nike
 ```
 
-If you change the password in WordPress, the secret still contains the original value.
+---
 
-To reset the admin password manually (example):
+## 15) Local‑to‑VPS production story
+**Same chart, different values**
+- Local values: `charts/ecommerce-store/values-local.yaml`
+- VPS values: `charts/ecommerce-store/values-prod.yaml`
 
-```bash
-kubectl -n store-<id> exec deploy/urumi-<id>-ecommerce-store-wordpress \
-  -- wp user update admin --user_pass='<newpass>'
-```
+**What changes**
+- Ingress class (`INGRESS_CLASS`)
+- Base domain (`STORE_BASE_DOMAIN`)
+- Storage class (`STORAGE_CLASS`)
+- NetworkPolicy defaults (off locally, on in prod)
+- Resource quotas (higher on VPS)
 
-## Sample products
-The CSV used to seed products is stored at:
-`charts/ecommerce-store/files/sample-products.csv`
+---
 
-## Delete a store
-Use the dashboard or:
+## 16) System design & tradeoffs (short)
+**Architecture choice**
+- Helm SDK inside Go orchestrator for idempotent installs and lifecycle control.
+- Namespace‑per‑store isolation for clean teardown and blast‑radius control.
 
-```bash
-curl -X DELETE http://localhost:8080/api/stores/store-one
-```
+**Idempotency / failure handling**
+- Requests are validated; create/delete are logged to `data/audit.log`.
+- Provisioning runs async; status updated by reconcile loop.
+- Helm install uses `Wait` + `WaitForJobs` to ensure store is ready.
 
-This removes the Helm release and namespace (clean teardown).
+**Cleanup**
+- Delete triggers Helm uninstall + namespace deletion.
+- Cleanup helper removes stuck namespaces/finalizers (best effort).
 
-## Production-like deployment (k3s)
-- Install nginx ingress (or use Traefik if preferred).
-- Use `values-prod.yaml` and set:
-  - `STORE_BASE_DOMAIN` to your public domain (wildcard DNS).
-  - `STORAGE_CLASS` to your CSI class.
-  - `INGRESS_CLASS` to your controller.
-  - `networkPolicy.allowIngressFromNamespace` to match your ingress namespace:
-    - nginx -> `ingress-nginx`
-    - traefik -> `kube-system`
-  - `networkPolicy.allowIngressFromSameNamespace`: allow intra-namespace access to WordPress (safe default).
-  - `networkPolicy.allowEgressToInternet`: keep `false` unless you need outbound HTTP/HTTPS (e.g., updates).
+**Production changes**
+- DNS/ingress domain, storage class, and NetworkPolicy via values.
+- Same chart used for local and VPS.
 
-Example:
+---
 
-```bash
-STORE_BASE_DOMAIN=stores.example.com \
-VALUES_FILE=../charts/ecommerce-store/values-prod.yaml \
-STORAGE_CLASS=local-path \
-go run .
-```
+## 17) Security posture (baseline)
+- **Secrets**: generated per store and stored only in Kubernetes Secrets.
+- **RBAC**: optional ServiceAccount flow (`USE_RBAC=true`); VPS defaults to admin kubeconfig.
+- **NetworkPolicy**: enabled in `values-prod.yaml` (ingress allowlist + DNS + DB).
+- **Public exposure**: only Ingress is public; MySQL stays internal.
 
-## Production story (local → VPS parity)
-This project runs the **same Helm chart** locally and on VPS. Only the **values file and env vars** change.
+---
 
-### Parity model
-- **Chart**: `charts/ecommerce-store` (same for local + VPS)
-- **Local values**: `values-local.yaml`
-- **VPS values**: `values-prod.yaml`
-- **Orchestrator**: same binary + Helm SDK flow
+## 18) Scaling plan (horizontal)
+- **API/orchestrator**: stateless → multiple replicas behind a Service.
+- **Dashboard**: static frontend → multiple pods / CDN.
+- **Provisioning throughput**: increase `MAX_CONCURRENT_PROVISIONS`, add worker queues.
+- **Stateful constraints**: MySQL is per‑store StatefulSet; for scale, migrate to managed DB.
 
-### What changes between local and VPS (values/env)
-- **Ingress class**:
-  - Local: often nginx in k3d/kind (`INGRESS_CLASS=nginx`)
-  - VPS: nginx in k3s (`INGRESS_CLASS=nginx`)
-- **Base domain**:
-  - Local: `127.0.0.1.nip.io`
-  - VPS: `<public-ip>.nip.io` or wildcard DNS
-- **Storage class**:
-  - Local: `local-path` (k3d/kind default)
-  - VPS: `local-path` or CSI (Longhorn, etc.)
-- **NetworkPolicy**:
-  - Local: usually off
-  - VPS: enabled with ingress allowlist
+---
 
-### Ingress exposure on VPS
-Ensure nginx is reachable externally:
-- **Ports open**: 80/443 on VM security group/NSG
-- **Ingress service**: `ingress-nginx-controller` must be exposed (LoadBalancer/NodePort)
-- **DNS**: wildcard record to VM IP (or nip.io)
+## 19) Abuse prevention & guardrails
+Implemented in orchestrator (configurable via env):
+- Rate limiting per IP (`RATE_LIMIT_MAX`, `RATE_LIMIT_WINDOW`)
+- Max stores total (`MAX_STORES_TOTAL`)
+- Max stores per IP (`MAX_STORES_PER_IP`)
+- Provisioning timeout (`PROVISION_TIMEOUT`)
+- Audit log (`data/audit.log`) + activity log (`data/activity.log`)
 
-### Secrets strategy
-Secrets are generated per store at provision time and stored in Kubernetes Secrets.
-No secrets are hardcoded in source control.
+---
 
-### Clean teardown
-Store deletion removes the Helm release and deletes the namespace. Zombie finalizers
-are cleaned if necessary.
-
-### Upgrade/Rollback
-Each store is a Helm release (`urumi-<id>`). Upgrades and rollbacks use Helm with `--atomic`
-and `--reuse-values` to preserve data.
-
-## Notes
-- Secrets are injected at install time by the orchestrator (no hardcoded secrets in repo).
-- Namespace-per-store provides isolation and simplified teardown.
-- Medusa is stubbed in Round 1 but the chart supports engine switching.
-
-## Abuse prevention controls (simple defaults)
-The orchestrator enforces lightweight abuse controls:
-
-- **Rate limiting** per IP for create/delete (defaults: 15 requests/minute)
-- **Max stores total** (default: 20)
-- **Max stores per IP** (default: 5)
-- **Provision timeout** (default: 8 minutes)
-- **Audit log** of create/delete in `orchestrator/data/audit.log`
-
-Override via env vars:
-
-```bash
-MAX_STORES_TOTAL=20 \
-MAX_STORES_PER_IP=5 \
-RATE_LIMIT_MAX=15 \
-RATE_LIMIT_WINDOW=1m \
-MAX_PROVISION_RETRIES=1 \
-PROVISION_RETRY_BACKOFF=10s \
-PROVISION_TIMEOUT=8m \
-./start.sh
-```
-
-## Observability (lightweight)
-- **Activity log** endpoint: `GET /api/activity` (shown in dashboard)
-- **Metrics** endpoint: `GET /api/metrics` (avg/p95 provisioning time)
-- **Audit log**: `orchestrator/data/audit.log` (create/delete events)
-- **Activity log**: `orchestrator/data/activity.log` (created/ready/failed/deleted)
-- **Provisioning duration** shown per store in the dashboard
-
-## Upgrade / rollback plan (per store)
-Each store is a Helm release named `urumi-<id>` in namespace `store-<id>`. Upgrades are
-performed per store. Use `--atomic` to auto-rollback on failures.
-
-### Upgrade (safe)
+## 20) Helm upgrade / rollback (per store)
 ```bash
 helm upgrade urumi-<id> charts/ecommerce-store \
   -n store-<id> \
   -f charts/ecommerce-store/values-local.yaml \
   --reuse-values \
-  --atomic \
-  --wait \
-  --timeout 10m
-```
+  --atomic --wait --timeout 10m
 
-### Rollback (safe)
-```bash
 helm history urumi-<id> -n store-<id>
 helm rollback urumi-<id> <REVISION> -n store-<id> --wait --timeout 10m
 ```
 
-Notes:
-- `--reuse-values` keeps existing secrets, PVCs, and store settings.
-- For production, use `values-prod.yaml` instead of `values-local.yaml`.
+---
 
-## RBAC (per-namespace least privilege)
-`./start.sh` automatically applies the RBAC manifest and runs the orchestrator with a
-ServiceAccount when possible. It falls back to the admin kubeconfig if that fails.
+## 21) Known limitations (Round 1)
+- Medusa is a **stub** (not fully implemented).
+- No multi‑node DB or multi‑AZ persistence (single‑node k3d/k3s).
+- TLS is not automated in this repo (cert‑manager annotations exist but not configured).
 
-The ServiceAccount gets only cluster-scope permissions for namespaces + discovery,
-and per-store permissions are granted via RoleBinding inside each `store-*` namespace.
+---
 
-The generated kubeconfig is stored at `.kube/orchestrator-sa.yaml`.
+## 22) Useful references (in repo)
+- `SYSTEM_DESIGN.md` — short architecture note
+- `orchestrator/README.md` — API + config details
+- `charts/ecommerce-store/` — Helm chart templates
 
-See `SYSTEM_DESIGN.md` for tradeoffs and reliability notes.
