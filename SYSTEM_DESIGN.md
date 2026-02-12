@@ -50,3 +50,31 @@
 - State is persisted in a local JSON file rather than a database to keep Round 1 scope focused.
 - Medusa is stubbed in Round 1 but the chart supports engine switching.
 - RBAC hardening is not yet applied; the orchestrator assumes a kubeconfig with namespace create/delete access.
+
+## Scaling considerations (future work)
+These are **scale risks** for large tenant counts (not current requirements) and how the design would evolve.
+
+### 1) State persistence bottleneck (stores.json)
+- **Current behavior:** every update rewrites the entire `stores.json` file (see `store_manager.go`).
+- **Risk at high scale:** disk I/O and global mutex contention increase with store count; status updates become slow.
+- **Fix path:** replace the JSON file with a database (PostgreSQL or similar) and update a single row per store.
+
+### 2) Reconcile loop complexity (O(N) polling)
+- **Current behavior:** `reconcile.go` iterates all stores periodically.
+- **Risk at high scale:** latency grows linearly with store count; “Ready/Failed” status updates lag.
+- **Fix path:** switch to event‑driven reconciliation (Kubernetes informers / watch API) or a queue.
+
+### 3) Kubernetes control‑plane limits (etcd object growth)
+- **Current behavior:** one namespace per store; each store creates multiple K8s objects.
+- **Risk at very high scale:** etcd size limits and API latency become a bottleneck.
+- **Fix path:** **multi‑cluster** sharding (fleet of clusters) with a control plane that assigns tenants per cluster.
+
+### 4) Ingress controller scale
+- **Current behavior:** nginx ingress updates config on every new host.
+- **Risk at high route counts:** reloads become slow and can impact availability.
+- **Fix path:** use a gateway that stores routes in a data plane (Envoy/Cilium/Kong with dynamic config) or shard by cluster.
+
+### 5) Per‑store database pods
+- **Current behavior:** each store has its own MySQL StatefulSet.
+- **Risk at high scale:** pod count and memory usage become prohibitive.
+- **Fix path:** migrate to managed DBs and/or multi‑tenant schema with strict isolation policies.
