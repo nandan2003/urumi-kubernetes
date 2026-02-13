@@ -4,6 +4,10 @@ This repo implements a **Kubernetes‑native store provisioning platform** that 
 
 ---
 
+Apologies for not recording this video with including my voice due to unavoidable circumstances: [Demo Video Link](!https://drive.google.com/file/d/17GWVXwYrA4Odm6HHREKsBZ2EoxzCOBEC/view?usp=sharing)
+
+---
+
 ![Architecture Diagram](image3x.png)
 
 ---
