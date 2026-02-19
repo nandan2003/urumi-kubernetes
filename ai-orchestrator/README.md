@@ -1,31 +1,50 @@
 # AI Orchestrator (LangGraph)
 
-A modular FastAPI service that leverages LangGraph to orchestrate AI-driven workflows for WooCommerce and WordPress management. It executes commands via `kubectl exec` and provides real-time streaming of tool execution and reasoning to the dashboard.
+A high-performance FastAPI service that leverages LangGraph to orchestrate AI-driven workflows for WooCommerce and WordPress management. It provides a deterministic, stateful agent capable of planning complex tasks, executing WP-CLI commands via `kubectl exec`, and tracking progress in real-time.
 
 ## Core Architecture
-- **LangGraph Orchestration**: Manages complex, multi-step tasks (e.g., marketing campaigns or bulk order processing) using a stateful graph.
-- **Modular MCP Servers**:
-  - `woocommerce_mcp_server.py`: Specialized tools for WooCommerce entities (Orders, Products, Customers).
-  - `elementor_mcp_server.py`: Interfaces with Elementor for automated page layout and design edits.
-  - `popup_mcp_server.py`: Handles creation and management of UI notifications and popups.
-  - `urumi_suite_mcp_server.py`: General utility tools for the Urumi platform.
-- **Unified Client**: A centralized `mcp_client.py` facilitates communication between the orchestrator and various MCP servers.
+
+- **LangGraph State Machine**: Uses a cyclic graph (`graph.py`) to manage agent state, tool execution loops, and message history.
+- **In-Process Tool Registry**: Tools are defined centrally in `tool_registry.py` as strongly-typed Pydantic models. This replaces the legacy separate MCP server processes with a faster, direct execution model.
+- **Direct Kubernetes Integration**: The tooling layer (`tools.py`) executes commands directly inside target WordPress pods using `kubectl exec`, ensuring context-aware operations (Namespace detection, Pod readiness checks).
+- **Task Tracking System**: The main application (`main.py`) parses natural language plans (e.g., "Step 1...", "Todo:") from the AI's response and broadcasts structured `task_plan` and `task_progress` events to the UI.
 
 ## Key Features
-- **Natural Language Intent**: Translates user requests into precise WP-CLI and WC-CLI commands.
-- **Multi-step Planning**: Automatically breaks down high-level requests into sequential, logical tool calls.
-- **Clarification Loop**: Interactively asks for missing information (e.g., specific order IDs or email addresses) before proceeding.
-- **Safe Execution Protocol**: Enforces a `list` -> `get` -> `modify` -> `verify` pattern for all destructive or state-changing operations.
-- **Streaming NDJSON**: Provides real-time feedback to the UI, including "thoughts," tool execution logs, and final responses.
+
+- **Natural Language Intent**: Translates user requests (e.g., "Run a Diwali sale") into precise WP-CLI and WC-CLI commands.
+- **Task Planning & Tracking**: Automatically detects multi-step plans in the agent's reasoning and reports progress (pending, in_progress, completed) for each step.
+- **Safe Execution Protocol**: The system prompt enforces a "Read-Inspect-Mutate" pattern. Tools are strongly typed to prevent hallucinated arguments.
+- **Streaming NDJSON**: Provides a rich real-time stream of events:
+  - `tool_call`: The agent is invoking a specific action.
+  - `tool_result`: Output from the WP-CLI command.
+  - `task_plan`: A detected list of steps the agent intends to follow.
+  - `task_progress`: Status updates on specific steps.
+  - `final`: The final natural language response.
+
+## Supported Capabilities
+
+The orchestrator includes a comprehensive suite of tools (`tool_registry.py`) covering:
+
+- **WooCommerce**:
+  - **Products**: List, Get, Create, Update, Delete.
+  - **Orders**: List, Get, Update status/notes.
+  - **Coupons**: Create, List, Delete.
+  - **Customers**: List, Get details.
+- **Popup Maker**: Create, Update, Delete, List, and configure settings (triggers/cookies).
+- **Elementor**: Flush CSS, Replace URLs, Sync Library, System Info.
+- **Urumi Suite**: Create store-wide banners (`urumi_create_banner`).
+- **MailPoet**: List subscribers, Create campaigns.
+- **Mail Catcher**: Debugging tool to list captured outgoing emails.
 
 ## Getting Started
 
 ### Prerequisites
 - Python 3.11+
-- Access to a Kubernetes cluster (e.g., k3d)
-- Azure OpenAI or OpenAI API credentials configured
+- Access to a Kubernetes cluster (k3d or remote)
+- Azure OpenAI credentials
 
 ### Installation
+
 ```bash
 cd ai-orchestrator
 python3 -m venv .venv
@@ -34,26 +53,42 @@ pip install -r requirements.txt
 ```
 
 ### Configuration
-1. Copy the example environment file:
-   ```bash
-   cp env-example.txt .env
-   ```
-2. Set your `AZURE_OPENAI_ENDPOINT` (ensuring it ends with `/openai/v1/`) and other required API keys.
+
+Create a `.env` file with the following:
+
+```env
+AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com/openai/v1/
+AZURE_OPENAI_API_KEY=<your-key>
+AZURE_OPENAI_DEPLOYMENT=<deployment-name>
+ORCH_API_BASE=http://localhost:8080
+```
 
 ### Running the Service
+
 ```bash
-# Start the FastAPI server
 uvicorn main:APP --host 0.0.0.0 --port 8000
 ```
 
 ## API Usage
-Interact with the orchestrator via the `/chat` endpoint:
+
+**Endpoint:** `POST /chat`
+
 ```bash
 curl -X POST http://localhost:8000/chat \
   -H 'Content-Type: application/json' \
-  -d '{"message":"Create a 20% discount coupon for Diwali"}'
+  -d '{"message":"Create a 20% discount coupon for Diwali and announce it with a banner"}'
 ```
 
-## Security & Constraints
-- **Safe Mode**: Toggle `SAFE_MODE=true` in `.env` for enhanced pre-flight validation.
-- **Command Allowlist**: Elementor and WooCommerce actions are restricted via `elementor-allowlist.json` and tool-level permissions.
+The response is a stream of Newline Delimited JSON (NDJSON).
+
+## Development & Testing
+
+The project includes a comprehensive test suite in `test_suite.py` and `tests/`.
+
+```bash
+# Run the full test suite
+python3 test_suite.py
+
+# Run specific module tests
+python3 -m unittest tests/test_tool_binding.py
+```
