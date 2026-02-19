@@ -85,3 +85,5 @@ wpcli:
   demoProductName: "Demo Product"
   demoProductPrice: "10"
   importSampleCsv: true
+  autoInstallPlugins: false
+  plugins: ""

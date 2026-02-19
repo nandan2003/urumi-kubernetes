@@ -60,6 +60,10 @@ spec:
               value: {{ .Values.wpcli.demoProductName | quote }}
             - name: DEMO_PRODUCT_PRICE
               value: {{ .Values.wpcli.demoProductPrice | quote }}
+            - name: WPCLI_AUTO_INSTALL_PLUGINS
+              value: {{ .Values.wpcli.autoInstallPlugins | quote }}
+            - name: WPCLI_PLUGINS
+              value: {{ .Values.wpcli.plugins | quote }}
           volumeMounts:
             - name: wordpress-data
               mountPath: /var/www/html

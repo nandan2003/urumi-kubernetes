@@ -1,0 +1,13 @@
+# Demo plugin pack (safe, free plugins from wordpress.org)
+# Lines starting with # are ignored.
+elementor
+popup-maker
+wpforms-lite
+wp-mail-catcher
+mailpoet
+spectra
+sureforms
+ultimate-addons-for-elementor
+# surerank (if available in your environment; may fail safely)
+surerank
+urumi-campaign-tools

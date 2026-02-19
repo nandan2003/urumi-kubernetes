@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: urumi-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: orchestrator
+  namespace: urumi-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: urumi-orchestrator-cluster
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["namespaces/finalize"]
+    verbs: ["update", "patch"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["rolebindings"]
+    verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingressclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "delete", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: urumi-orchestrator-ns
+rules:
+  - apiGroups: [""]
+    resources:
+      ["pods", "pods/exec", "services", "configmaps", "secrets", "persistentvolumeclaims", "resourcequotas", "limitranges"]
+    verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: urumi-orchestrator-cluster
+subjects:
+  - kind: ServiceAccount
+    name: orchestrator
+    namespace: urumi-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: urumi-orchestrator-cluster
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: urumi-orchestrator-ns
+subjects:
+  - kind: ServiceAccount
+    name: orchestrator
+    namespace: urumi-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: urumi-orchestrator-ns

@@ -1,0 +1,11 @@
+{
+  "options": {
+    "woocommerce_email_from_name": { "type": "string", "max_len": 80 },
+    "woocommerce_email_from_address": { "type": "email", "max_len": 120 },
+    "urumi_email_logging_threshold": { "type": "enum", "values": ["DEBUG","INFO","NOTICE","WARNING","ERROR","CRITICAL","ALERT","EMERGENCY"] },
+    "urumi_email_preview_config": { "type": "json" }
+  },
+  "posts": {
+    "urumi_email_draft": { "fields": ["title", "content", "status"] }
+  }
+}

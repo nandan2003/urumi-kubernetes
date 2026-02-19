@@ -11,5 +11,12 @@ export default defineConfig({
   server: {
     port: 5173,
     allowedHosts: allowedHosts.length ? allowedHosts : undefined,
+    proxy: {
+      "/ai": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/ai/, ""),
+      },
+    },
   },
 });

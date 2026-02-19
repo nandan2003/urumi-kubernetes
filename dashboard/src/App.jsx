@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ActivityPanel from "./components/ActivityPanel";
+import AiChat from "./components/AiChat";
 import ApiOfflineNotice from "./components/ApiOfflineNotice";
 import CreateStorePanel from "./components/CreateStorePanel";
 import HeroSection from "./components/HeroSection";
@@ -7,6 +8,7 @@ import PasswordNotice from "./components/PasswordNotice";
 import StoresPanel from "./components/StoresPanel";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8080";
+const AI_BASE = import.meta.env.VITE_AI_URL || "/ai";
 
 const statusTone = {
   Provisioning: "status status--provisioning",
@@ -17,6 +19,16 @@ const statusTone = {
 
 const PROVISIONING_ESTIMATE_MS = 60 * 1000;
 const STUCK_THRESHOLD_MS = 2 * 60 * 1000;
+const INFRA_ERROR_RE = /(forbidden|rbac|rolebinding|serviceaccount|pods\/exec|authorization\.k8s\.io|x509|certificate signed by unknown authority|unable to connect to the server|context \"?.*\"? does not exist|connection refused|timed out|tls)/i;
+
+function sanitizeInfrastructureError(message) {
+  if (!message) return "";
+  const text = String(message);
+  if (INFRA_ERROR_RE.test(text)) {
+    return "Provisioning failed due to an internal cluster access issue. Please retry or restart the stack.";
+  }
+  return text;
+}
 
 function formatDate(value) {
   if (!value) return "-";
@@ -30,6 +42,7 @@ function parseActivityLine(line) {
   try {
     const parsed = JSON.parse(line);
     const ts = parsed?.ts ? new Date(parsed.ts).getTime() : null;
+    const detail = sanitizeInfrastructureError(parsed?.detail || "");
     return {
       raw: line,
       ts: Number.isNaN(ts) ? null : ts,
@@ -37,7 +50,7 @@ function parseActivityLine(line) {
       event: parsed?.event || "",
       status: parsed?.status || "",
       store: parsed?.store || parsed?.name || "",
-      detail: parsed?.detail || "",
+      detail,
     };
   } catch {
     return { raw: line, ts: null };
@@ -139,7 +152,11 @@ export default function App() {
         throw new Error(`Failed to load stores (${res.status})`);
       }
       const data = await res.json();
-      setStores(Array.isArray(data) ? data : []);
+      const normalized = (Array.isArray(data) ? data : []).map((store) => ({
+        ...store,
+        error: sanitizeInfrastructureError(store?.error || ""),
+      }));
+      setStores(normalized);
       setError("");
       setApiOffline(false);
     } catch (err) {
@@ -254,55 +271,61 @@ export default function App() {
 
   return (
     <div className="app">
-      <HeroSection
-        storesCount={stores.length}
-        totalReady={totalReady}
-        totalProvisioning={totalProvisioning}
-        totalFailed={totalFailed}
-        metrics={metrics}
-      />
+      <aside className="sidebar">
+        <AiChat apiUrl={AI_BASE} />
+      </aside>
 
-      {apiOffline && <ApiOfflineNotice apiBase={API_BASE} />}
-
-      <CreateStorePanel
-        name={name}
-        engine={engine}
-        subdomain={subdomain}
-        submitting={submitting}
-        error={error}
-        onNameChange={(event) => setName(event.target.value)}
-        onEngineChange={(event) => setEngine(event.target.value)}
-        onSubdomainChange={(event) => setSubdomain(event.target.value)}
-        onSubmit={createStore}
-      />
-
-      {passwordNotice && (
-        <PasswordNotice
-          notice={passwordNotice}
-          onDismiss={() => setPasswordNotice(null)}
-          passwordCommand={passwordCommand}
+      <main className="main-content">
+        <HeroSection
+          storesCount={stores.length}
+          totalReady={totalReady}
+          totalProvisioning={totalProvisioning}
+          totalFailed={totalFailed}
+          metrics={metrics}
         />
-      )}
 
-      <StoresPanel
-        stores={stores}
-        loading={loading}
-        hasStores={hasStores}
-        statusTone={statusTone}
-        storeIsStuck={storeIsStuck}
-        progressForStore={progressForStore}
-        formatDate={formatDate}
-        formatDuration={formatDuration}
-        passwordCommand={passwordCommand}
-        onRefresh={fetchStores}
-        onDelete={deleteStore}
-      />
+        {apiOffline && <ApiOfflineNotice apiBase={API_BASE} />}
 
-      <ActivityPanel
-        activityItems={activityItems}
-        formatDate={formatDate}
-        onRefresh={fetchActivity}
-      />
+        <CreateStorePanel
+          name={name}
+          engine={engine}
+          subdomain={subdomain}
+          submitting={submitting}
+          error={error}
+          onNameChange={(event) => setName(event.target.value)}
+          onEngineChange={(event) => setEngine(event.target.value)}
+          onSubdomainChange={(event) => setSubdomain(event.target.value)}
+          onSubmit={createStore}
+        />
+
+        {passwordNotice && (
+          <PasswordNotice
+            notice={passwordNotice}
+            onDismiss={() => setPasswordNotice(null)}
+            passwordCommand={passwordCommand}
+          />
+        )}
+
+        <StoresPanel
+          stores={stores}
+          loading={loading}
+          hasStores={hasStores}
+          statusTone={statusTone}
+          storeIsStuck={storeIsStuck}
+          progressForStore={progressForStore}
+          formatDate={formatDate}
+          formatDuration={formatDuration}
+          passwordCommand={passwordCommand}
+          onRefresh={fetchStores}
+          onDelete={deleteStore}
+        />
+
+        <ActivityPanel
+          activityItems={activityItems}
+          formatDate={formatDate}
+          onRefresh={fetchActivity}
+        />
+      </main>
     </div>
   );
 }

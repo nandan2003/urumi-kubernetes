@@ -15,6 +15,16 @@ fi
 API_ADDR="${API_ADDR:-http://localhost:8080}"
 DASH_PORT="${DASH_PORT:-5173}"
 DASH_ADDR="${DASH_ADDR:-http://localhost:${DASH_PORT}}"
+AI_ENABLE="${AI_ENABLE:-true}"
+AI_PORT="${AI_PORT:-8000}"
+AI_ADDR="${AI_ADDR:-http://localhost:${AI_PORT}}"
+AI_DIR="${AI_DIR:-$ROOT_DIR/ai-orchestrator}"
+AI_VENV_PATH="${AI_VENV_PATH:-$AI_DIR/.venv}"
+AI_AUTO_INSTALL_DEPS="${AI_AUTO_INSTALL_DEPS:-true}"
+AI_WP_CLI_PHP_ARGS="${AI_WP_CLI_PHP_ARGS:--d memory_limit=512M}"
+AUTO_INSTALL_PLUGINS="${AUTO_INSTALL_PLUGINS:-true}"
+PLUGINS_FILE="${PLUGINS_FILE:-$ROOT_DIR/scripts/plugins.txt}"
+PLUGINS="${PLUGINS:-}"
 PORT_FWD_PORT="${PORT_FWD_PORT:-9999}"
 ADMIN_PORT_BASE="${ADMIN_PORT_BASE:-9999}"
 ADMIN_PORT_MAX="${ADMIN_PORT_MAX:-11000}"
@@ -34,12 +44,14 @@ K3D_CREATE_ARGS="${K3D_CREATE_ARGS:---servers 1 --agents 0 --port 80:80@loadbala
 KUBECONFIG_FILE="${KUBECONFIG_FILE:-$ROOT_DIR/.kube/k3d-${K3D_CLUSTER}.yaml}"
 KUBE_CONTEXT="${KUBE_CONTEXT:-k3d-${K3D_CLUSTER}}"
 ORCH_KUBECONFIG="${ORCH_KUBECONFIG:-$KUBECONFIG_FILE}"
+AI_KUBECONFIG="${AI_KUBECONFIG:-$ORCH_KUBECONFIG}"
 PF_STATE_FILE="${PF_STATE_FILE:-$ROOT_DIR/.state/admin-port-forwards.txt}"
 PREFLIGHT_RETRIES="${PREFLIGHT_RETRIES:-3}"
 PREFLIGHT_SLEEP="${PREFLIGHT_SLEEP:-2}"
 
 ORCH_LOG="$ROOT_DIR/orchestrator/orchestrator.log"
 DASH_LOG="$ROOT_DIR/dashboard/dashboard.log"
+AI_LOG="$ROOT_DIR/ai-orchestrator/ai-orchestrator.log"
 SAMPLE_CSV="$ROOT_DIR/charts/ecommerce-store/files/sample-products.csv"
 STORES_JSON="$ROOT_DIR/orchestrator/data/stores.json"
 
@@ -55,6 +67,12 @@ source "$ROOT_DIR/scripts/ports.sh"
 source "$ROOT_DIR/scripts/cleanup.sh"
 source "$ROOT_DIR/scripts/products.sh"
 source "$ROOT_DIR/scripts/rbac.sh"
+source "$ROOT_DIR/scripts/ai.sh"
+
+if [[ "$AUTO_INSTALL_PLUGINS" == "true" && ! -f "$PLUGINS_FILE" ]]; then
+  warn "Plugins file not found at ${PLUGINS_FILE}; disabling auto plugin install."
+  AUTO_INSTALL_PLUGINS="false"
+fi
 
 start_orchestrator() {
   # Start Go API (logs to orchestrator.log).
@@ -66,6 +84,9 @@ start_orchestrator() {
   VALUES_FILE="$VALUES_FILE" \
   WP_ADMIN_USER="admin" \
   WP_ADMIN_EMAIL="admin@example.com" \
+  AUTO_INSTALL_PLUGINS="$AUTO_INSTALL_PLUGINS" \
+  PLUGINS_FILE="$PLUGINS_FILE" \
+  PLUGINS="$PLUGINS" \
   go run . >"$ORCH_LOG" 2>&1 &
   ORCH_PID=$!
   echo "$ORCH_PID" >"$ROOT_DIR/orchestrator/.orchestrator.pid"
@@ -79,10 +100,14 @@ start_dashboard() {
   if [[ "$STACK_MODE" == "vps" ]]; then
     extra_args=(-- --host 0.0.0.0 --port "$DASH_PORT")
   fi
+  local ai_env=()
+  if [[ "$AI_ENABLE" == "true" ]]; then
+    ai_env=(VITE_AI_URL="$AI_ADDR")
+  fi
   if [[ -n "${VITE_ALLOWED_HOSTS:-}" ]]; then
-    VITE_ALLOWED_HOSTS="$VITE_ALLOWED_HOSTS" VITE_API_BASE="$API_ADDR" npm run dev "${extra_args[@]}" >"$DASH_LOG" 2>&1 &
+    env VITE_ALLOWED_HOSTS="$VITE_ALLOWED_HOSTS" VITE_API_BASE="$API_ADDR" "${ai_env[@]}" npm run dev "${extra_args[@]}" >"$DASH_LOG" 2>&1 &
   else
-    VITE_API_BASE="$API_ADDR" npm run dev "${extra_args[@]}" >"$DASH_LOG" 2>&1 &
+    env VITE_API_BASE="$API_ADDR" "${ai_env[@]}" npm run dev "${extra_args[@]}" >"$DASH_LOG" 2>&1 &
   fi
   DASH_PID=$!
   echo "$DASH_PID" >"$ROOT_DIR/dashboard/.dashboard.pid"
@@ -98,6 +123,7 @@ Urumi VPS Stack
 ===============
 Dashboard: ${DASH_ADDR}
 API:       ${API_ADDR}/healthz
+AI:        ${AI_ADDR}
 Store:     http://<store-id>.${BASE_DOMAIN}
 Admin:     http://<store-id>.${BASE_DOMAIN}/wp-admin
 INFO
@@ -109,6 +135,7 @@ Urumi Local Stack
 =================
 Dashboard: ${DASH_ADDR}
 API:       ${API_ADDR}/healthz
+AI:        ${AI_ADDR}
 Admin:     ports start at http://localhost:${ADMIN_PORT_BASE}/wp-admin (assigned per store)
 INFO
 }
@@ -118,6 +145,10 @@ cleanup() {
   [[ -n "${ADMIN_WATCH_PID:-}" ]] && kill "$ADMIN_WATCH_PID" >/dev/null 2>&1 || true
   [[ -n "${DASH_PID:-}" ]] && kill "$DASH_PID" >/dev/null 2>&1 || true
   [[ -n "${ORCH_PID:-}" ]] && kill "$ORCH_PID" >/dev/null 2>&1 || true
+  [[ -n "${AI_PID:-}" ]] && kill "$AI_PID" >/dev/null 2>&1 || true
+  if [[ "${AI_VENV_ACTIVE:-false}" == "true" ]]; then
+    deactivate >/dev/null 2>&1 || true
+  fi
   kill_running_processes
   if [[ "$DELETE_CLUSTER_ON_EXIT" == "true" ]]; then
     k3d cluster delete "$K3D_CLUSTER" >/dev/null 2>&1 || true
@@ -128,18 +159,7 @@ cleanup() {
 
 main() {
   # Preflight, cluster boot, image build/import, then services.
-  require_cmd kubectl
-  require_cmd go
-  require_cmd npm
-  if [[ "$BUILD_WORDPRESS_IMAGE" == "true" ]]; then
-    require_cmd docker
-  fi
-  if [[ "$STACK_MODE" == "local" ]]; then
-    require_cmd helm
-    require_cmd k3d
-  else
-    require_cmd k3s
-  fi
+  check_required_tools "$STACK_MODE" "$BUILD_WORDPRESS_IMAGE"
 
   if [[ "$BUILD_WORDPRESS_IMAGE" == "true" ]]; then
     if ! preflight_docker; then
@@ -207,6 +227,7 @@ main() {
   trap cleanup INT TERM EXIT
 
   start_orchestrator
+  start_ai_orchestrator
   start_dashboard
 
   if [[ "$STACK_MODE" == "local" ]]; then

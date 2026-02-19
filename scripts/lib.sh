@@ -20,6 +20,26 @@ require_cmd() {
   fi
 }
 
+check_required_tools() {
+  local stack_mode="${1:-local}"
+  local build_image="${2:-false}"
+
+  require_cmd kubectl
+  require_cmd go
+  require_cmd npm
+  
+  if [[ "$build_image" == "true" ]]; then
+    require_cmd docker
+  fi
+  
+  if [[ "$stack_mode" == "local" ]]; then
+    require_cmd helm
+    require_cmd k3d
+  else
+    require_cmd k3s
+  fi
+}
+
 retry() {
   local attempts="$1"
   local delay="$2"
