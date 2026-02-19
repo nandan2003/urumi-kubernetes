@@ -42,50 +42,6 @@ def get_store_pod_info(store_name: str) -> tuple[str, str]:
     pod = _wait_for_wp_pod(namespace)
     return namespace, pod
 
-def get_store_api_keys(store_name: str) -> tuple[str, str, str]:
-    """Returns (url, username, app_password) for the store, using WP Application Passwords."""
-    stores = _fetch_stores()
-    match = _match_store_record(store_name, stores or [])
-    if not match:
-        raise RuntimeError(f"Store {store_name} not found")
-    
-    namespace = match.get("namespace") or _resolve_store_namespace(store_name, stores)
-    pod = _wait_for_wp_pod(namespace)
-    
-    # Get Site URL via WP CLI
-    cmd_url = [
-        "-n", namespace, "exec", pod, "--",
-        *_wp_base_cmd(), "option", "get", "siteurl", "--allow-root"
-    ]
-    url_output = _kubectl(cmd_url)
-    if url_output.startswith("Error:"):
-        raise RuntimeError(f"Failed to get site URL: {url_output}")
-    url = url_output.strip()
-
-    # Manage Application Password
-    # 1. Check if exists (we can't retrieve it, so we always recreate to be safe, or just overwrite)
-    # Actually, let's just delete and recreate to ensure we have the valid cleartext password.
-    app_name = "mcp-app"
-    
-    # Delete existing if any
-    cmd_delete = [
-        "-n", namespace, "exec", pod, "--",
-        *_wp_base_cmd(), "user", "application-password", "delete", "admin", app_name, "--allow-root"
-    ]
-    _kubectl(cmd_delete) # Ignore error if not exists
-
-    # Create new
-    cmd_create = [
-        "-n", namespace, "exec", pod, "--",
-        *_wp_base_cmd(), "user", "application-password", "create", "admin", app_name, "--porcelain", "--allow-root"
-    ]
-    password = _kubectl(cmd_create)
-    
-    if password.startswith("Error:") or not password.strip():
-        raise RuntimeError(f"Failed to create application password: {password}")
-
-    return url, "admin", password.strip()
-
 def run_wp_cli_command(namespace: str, pod: str, wp_args: list[str]) -> str:
     """
     Executes a WP-CLI command safely inside the target pod.

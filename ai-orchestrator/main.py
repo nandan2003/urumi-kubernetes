@@ -159,7 +159,7 @@ def _trim_messages(messages: list) -> list:
     return messages[-MAX_SESSION_MESSAGES:]
 
 
-def _stream_events(user_input: str, session_id: str | None):
+async def _stream_events(user_input: str, session_id: str | None):
     try:
         print(f"DEBUG: Starting stream for input: {user_input}", flush=True)
         session_key = session_id or str(uuid.uuid4())
@@ -169,10 +169,10 @@ def _stream_events(user_input: str, session_id: str | None):
         last_messages = state["messages"]
         # LangGraph "values" mode emits the full state after each node execution.
         # We look at the last message to determine what just happened.
-        for event in GRAPH.stream(
+        async for event in GRAPH.astream(
             state,
             stream_mode="values",
-            config={"recursion_limit": 20},
+            config={"recursion_limit": 50},
         ):
             print(f"DEBUG: Received event keys: {list(event.keys())}", flush=True)
             messages = event.get("messages", [])
@@ -260,7 +260,7 @@ def healthz():
 
 
 @APP.post("/chat")
-def chat(req: ChatRequest):
+async def chat(req: ChatRequest):
     if not req.message.strip():
         raise HTTPException(status_code=400, detail="message is required")
     return StreamingResponse(
