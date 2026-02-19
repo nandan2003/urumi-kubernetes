@@ -35,6 +35,21 @@ func getEnvDuration(key string, fallback time.Duration) time.Duration {
 	return fallback
 }
 
+func getEnvBool(key string, fallback bool) bool {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	switch strings.ToLower(value) {
+	case "1", "true", "yes", "y", "on":
+		return true
+	case "0", "false", "no", "n", "off":
+		return false
+	default:
+		return fallback
+	}
+}
+
 func slugify(input string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(input) {

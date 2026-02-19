@@ -60,25 +60,42 @@ PY
 }
 
 delete_namespaces() {
-  # Delete namespaces and force-finalize if stuck.
+  # Delete namespaces and force-finalize if stuck (parallelized).
   local list="$1"
   if [[ -z "$list" ]]; then
     return
   fi
+
+  # 1. Trigger deletion for all target namespaces
   while IFS= read -r ns; do
     [[ -z "$ns" ]] && continue
+    log "Deleting namespace ${ns}..."
     kctl delete ns "$ns" --wait=false >/dev/null 2>&1 || true
-    for _ in $(seq 1 30); do
-      if ! kctl get ns "$ns" >/dev/null 2>&1; then
-        break
-      fi
-      phase="$(kctl get ns "$ns" -o jsonpath='{.status.phase}' 2>/dev/null || true)"
-      if [[ "$phase" == "Terminating" ]]; then
-        finalize_namespace "$ns"
-      fi
-      sleep 2
-    done
   done <<<"$list"
+
+  # 2. Monitor and finalize in parallel background jobs
+  local pids=""
+  while IFS= read -r ns; do
+    [[ -z "$ns" ]] && continue
+    (
+      for _ in $(seq 1 30); do
+        if ! kctl get ns "$ns" >/dev/null 2>&1; then
+          return 0
+        fi
+        phase="$(kctl get ns "$ns" -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+        if [[ "$phase" == "Terminating" ]]; then
+          finalize_namespace "$ns"
+        fi
+        sleep 2
+      done
+    ) &
+    pids="$pids $!"
+  done <<<"$list"
+
+  # 3. Wait for all background jobs to finish
+  if [[ -n "$pids" ]]; then
+    wait $pids
+  fi
 }
 
 cleanup_failed_stores() {

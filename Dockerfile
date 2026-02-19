@@ -8,6 +8,7 @@ RUN set -e; \
   rm -rf /var/lib/apt/lists/*; \
   curl -fSL -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar; \
   chmod +x /usr/local/bin/wp; \
+  echo "memory_limit=512M" > /usr/local/etc/php/conf.d/urumi-memory.ini; \
   curl -fSL -o /tmp/woocommerce.zip https://downloads.wordpress.org/plugin/woocommerce.latest-stable.zip; \
   unzip -q /tmp/woocommerce.zip -d /usr/src/wordpress/wp-content/plugins; \
   rm -f /tmp/woocommerce.zip; \

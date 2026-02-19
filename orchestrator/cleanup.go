@@ -35,6 +35,21 @@ func (p *provisioner) Delete(ctx context.Context, store *Store) error {
 		return fmt.Errorf("kube client: %w", err)
 	}
 
+	// Force delete all pods in the namespace to prevent stuck Terminating pods
+	if pods, err := clientset.CoreV1().Pods(store.Namespace).List(ctx, metav1.ListOptions{}); err == nil {
+		grace := int64(0)
+		deletePolicy := metav1.DeletePropagationBackground
+		for _, pod := range pods.Items {
+			log.Printf("Force deleting pod %s/%s", store.Namespace, pod.Name)
+			if err := clientset.CoreV1().Pods(store.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
+				GracePeriodSeconds: &grace,
+				PropagationPolicy:  &deletePolicy,
+			}); err != nil {
+				log.Printf("pod force delete failed: %v", err)
+			}
+		}
+	}
+
 	if pvcs, err := clientset.CoreV1().PersistentVolumeClaims(store.Namespace).List(ctx, metav1.ListOptions{}); err == nil {
 		for _, pvc := range pvcs.Items {
 			pvc.Finalizers = nil
@@ -100,11 +115,22 @@ func (p *provisioner) finalizeNamespace(ctx context.Context, namespace string) e
 		}
 		return err
 	}
-	if len(ns.Finalizers) == 0 && len(ns.Spec.Finalizers) == 0 {
-		return nil
+	
+	// Remove finalizers from Spec
+	if len(ns.Spec.Finalizers) > 0 {
+		ns.Spec.Finalizers = []corev1.FinalizerName{}
+		if _, err := clientset.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{}); err != nil {
+			log.Printf("namespace spec update failed: %v", err)
+		}
 	}
-	ns.Finalizers = []string{}
-	ns.Spec.Finalizers = []corev1.FinalizerName{}
-	_, err = clientset.CoreV1().Namespaces().Finalize(ctx, ns, metav1.UpdateOptions{})
-	return err
+
+	// Remove finalizers from Status/ObjectMeta (if any)
+	if len(ns.Finalizers) > 0 {
+		ns.Finalizers = []string{}
+		// This uses the finalize subresource
+		if _, err := clientset.CoreV1().Namespaces().Finalize(ctx, ns, metav1.UpdateOptions{}); err != nil {
+			log.Printf("namespace finalize failed: %v", err)
+		}
+	}
+	return nil
 }

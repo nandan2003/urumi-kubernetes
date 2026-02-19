@@ -86,6 +86,13 @@ func (p *provisioner) Provision(ctx context.Context, store *Store, subdomain, ad
 		}
 	}
 
+	if plugins := p.storePlugins(); len(plugins) > 0 {
+		overrides["wpcli"] = map[string]interface{}{
+			"autoInstallPlugins": true,
+			"plugins":            strings.Join(plugins, ","),
+		}
+	}
+
 	storageClass := p.cfg.StorageClass
 	if storageClass == "" {
 		if detected, err := p.detectDefaultStorageClass(ctx); err == nil && detected != "" {
@@ -192,6 +199,39 @@ func (p *provisioner) resolveIngressNamespace(ingressClass string) string {
 	default:
 		return ""
 	}
+}
+
+func (p *provisioner) storePlugins() []string {
+	if !p.cfg.AutoInstallPlugins {
+		return nil
+	}
+	plugins := []string{}
+	if p.cfg.PluginsFile != "" {
+		if data, err := os.ReadFile(p.cfg.PluginsFile); err == nil {
+			lines := strings.Split(string(data), "\n")
+			for _, line := range lines {
+				entry := strings.TrimSpace(line)
+				if entry == "" || strings.HasPrefix(entry, "#") {
+					continue
+				}
+				if idx := strings.Index(entry, "#"); idx >= 0 {
+					entry = strings.TrimSpace(entry[:idx])
+				}
+				if entry != "" {
+					plugins = append(plugins, entry)
+				}
+			}
+		}
+	}
+	if len(plugins) == 0 && p.cfg.Plugins != "" {
+		for _, entry := range strings.Split(p.cfg.Plugins, ",") {
+			item := strings.TrimSpace(entry)
+			if item != "" {
+				plugins = append(plugins, item)
+			}
+		}
+	}
+	return plugins
 }
 
 func (p *provisioner) ensureNamespaceReady(ctx context.Context, namespace string) error {

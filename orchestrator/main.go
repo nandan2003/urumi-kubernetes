@@ -69,6 +69,9 @@ type config struct {
 	ActivityLogFile       string
 	MaxProvisionRetries   int
 	ProvisionRetryBackoff time.Duration
+	AutoInstallPlugins     bool
+	Plugins                string
+	PluginsFile            string
 }
 
 func loadConfig() config {
@@ -95,6 +98,9 @@ func loadConfig() config {
 		ActivityLogFile:       getEnv("ACTIVITY_LOG_FILE", filepath.Join(cwd, "data", "activity.log")),
 		MaxProvisionRetries:   getEnvInt("MAX_PROVISION_RETRIES", 1),
 		ProvisionRetryBackoff: getEnvDuration("PROVISION_RETRY_BACKOFF", 10*time.Second),
+		AutoInstallPlugins:    getEnvBool("AUTO_INSTALL_PLUGINS", false),
+		Plugins:               getEnv("PLUGINS", ""),
+		PluginsFile:           getEnv("PLUGINS_FILE", ""),
 	}
 	return cfg
 }

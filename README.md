@@ -350,3 +350,8 @@ helm rollback urumi-<id> <REVISION> -n store-<id> --wait --timeout 10m
 - `orchestrator/README.md` — API + config details
 - `charts/ecommerce-store/` — Helm chart templates
 
+## 23) Round 2 (Gen‑AI Orchestrator)
+The Round‑2 AI layer lives in `ai-orchestrator/` and exposes a FastAPI endpoint using
+**LangGraph** to orchestrate WooCommerce CLI commands via `kubectl exec`.
+
+See `ai-orchestrator/README.md` for setup and demo usage.

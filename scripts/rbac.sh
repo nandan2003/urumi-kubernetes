@@ -8,7 +8,7 @@ setup_orchestrator_rbac() {
     return
   fi
 
-  local rbac_file="$ROOT_DIR/deploy/orchestrator-rbac.yaml"
+  local rbac_file="$ROOT_DIR/orchestrator/orchestrator-rbac.yaml"
   if [[ ! -f "$rbac_file" ]]; then
     warn "RBAC file not found at ${rbac_file}. Falling back to admin kubeconfig."
     ORCH_KUBECONFIG="$KUBECONFIG_FILE"

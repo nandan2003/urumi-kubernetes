@@ -15,6 +15,14 @@ data:
 {{ .Files.Get "files/products.sh" | indent 4 }}
 {{- end }}
   {{- end }}
+  urumi-campaign-tools.php: |
+{{- if .Files.Get "files/urumi-campaign-tools/urumi-campaign-tools.php" }}
+{{ .Files.Get "files/urumi-campaign-tools/urumi-campaign-tools.php" | indent 4 }}
+{{- end }}
+  urumi-capabilities.json: |
+{{- if .Files.Get "files/urumi-campaign-tools/urumi-capabilities.json" }}
+{{ .Files.Get "files/urumi-campaign-tools/urumi-capabilities.json" | indent 4 }}
+{{- end }}
   setup.sh: |
     #!/bin/sh
     set +e
@@ -23,11 +31,18 @@ data:
 
     chown -R www-data:www-data /var/www/html || true
     export WP_CLI_ALLOW_ROOT=1
+    # Increase PHP memory for WP-CLI to avoid plugin/import failures.
+    export WP_CLI_PHP_ARGS="-d memory_limit=512M"
+    WP_CLI_MEMORY="${WP_CLI_MEMORY:-512M}"
     LOG_FILE="/var/www/html/wpcli.log"
     exec >"$LOG_FILE" 2>&1
     set -x
 
     cd /var/www/html
+
+    wp() {
+      php -d memory_limit="${WP_CLI_MEMORY}" /usr/local/bin/wp "$@"
+    }
 
     if [ ! -f /var/www/html/wp-includes/version.php ]; then
       if [ -d /usr/src/wordpress ]; then
@@ -46,6 +61,9 @@ data:
         --force \
         --allow-root || true
     fi
+    # Ensure WP has higher memory limits when possible (web + CLI).
+    wp config set WP_MEMORY_LIMIT 256M --allow-root || true
+    wp config set WP_MAX_MEMORY_LIMIT 512M --allow-root || true
     wp config set FS_METHOD direct --allow-root || true
 
     echo "Waiting for database..."
@@ -94,23 +112,45 @@ data:
     wp plugin activate woocommerce --allow-root || true
     wp theme activate storefront --allow-root || true
 
+    if [ -f /scripts/urumi-campaign-tools.php ]; then
+      mkdir -p /var/www/html/wp-content/plugins/urumi-campaign-tools
+      cp /scripts/urumi-campaign-tools.php /var/www/html/wp-content/plugins/urumi-campaign-tools/urumi-campaign-tools.php || true
+      if [ -f /scripts/urumi-capabilities.json ]; then
+        cp /scripts/urumi-capabilities.json /var/www/html/wp-content/plugins/urumi-campaign-tools/urumi-capabilities.json || true
+      fi
+      wp plugin activate urumi-campaign-tools --allow-root || true
+    fi
+
     wp wc tool run install_pages --user="${WP_ADMIN_USER}" --allow-root || true
     wp option update woocommerce_cod_settings '{"enabled":"yes"}' --format=json --allow-root || true
     wp option update woocommerce_onboarding_profile '{"skipped":true}' --format=json --allow-root || true
     wp option update woocommerce_task_list_hidden yes --allow-root || true
 
-    # Ensure the store is publicly visible (disable "coming soon" if present).
-    for key in $(wp option list --search='woocommerce_coming_soon%' --field=option_name --allow-root 2>/dev/null); do
-      wp option update "$key" no --allow-root || true
-    done
-    for key in $(wp option list --search='woocommerce_store_visibility%' --field=option_name --allow-root 2>/dev/null); do
-      wp option update "$key" live --allow-root || true
-    done
+    # FORCE LIVE MODE: Disable "Coming Soon" for public visibility.
+    wp option update woocommerce_coming_soon no --allow-root || true
+    wp option update woocommerce_store_visibility live --allow-root || true
 
     if [ -f /scripts/products.sh ]; then
       sh /scripts/products.sh || true
     else
       echo "products.sh not found; skipping product import."
+    fi
+
+    if [ "${WPCLI_AUTO_INSTALL_PLUGINS}" = "true" ] && [ -n "${WPCLI_PLUGINS}" ]; then
+      echo "Installing demo plugins..."
+      IFS=',' 
+      for plugin in ${WPCLI_PLUGINS}; do
+        plugin="$(echo "$plugin" | xargs)"
+        if [ -z "$plugin" ]; then
+          continue
+        fi
+        if [ "$plugin" = "urumi-campaign-tools" ]; then
+          wp plugin activate urumi-campaign-tools --allow-root || true
+          continue
+        fi
+        wp plugin install "$plugin" --activate --allow-root || wp plugin activate "$plugin" --allow-root || true
+      done
+      unset IFS
     fi
 
     exit 0
