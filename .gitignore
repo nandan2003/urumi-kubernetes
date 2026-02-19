@@ -10,6 +10,7 @@ Thumbs.db
 node_modules/
 dashboard/node_modules/
 dashboard/dist/
+ai-orchestrator/tests/__pycache__/
 
 # Go
 *.test
@@ -20,6 +21,10 @@ dashboard/dist/
 orchestrator/*.log
 orchestrator/*.pid
 orchestrator/data/stores.json
+ai-orchestrator/uvicorn.log
+ai-orchestrator/ai-orchestrator.log
+ai-orchestrator/__pycache__
+ai-orchestrator/.venv
 
 # Local kube / k3d
 .kube/
