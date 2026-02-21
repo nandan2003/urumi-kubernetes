@@ -12,11 +12,6 @@ High Level Architecture
 
 ---
 
-Detailed Architecture Diagram
-![Architecture Diagram](https://github.com/nandan2003/urumi-kubernetes/blob/main/Detailed%20Architecture.png)
-
----
-
 ## 1) Problem statement (Round 1)
 Build a small **store provisioning platform** that works on local Kubernetes and can run in production (k3s on a VPS) **with configuration changes only** (via Helm values).
 
