@@ -1,7 +1,6 @@
 fastapi==0.115.6
 uvicorn>=0.31.1
 pydantic>=2.11.0
-requests==2.32.3
 langgraph==0.2.34
 langchain-core==0.3.25
 langchain-openai==0.2.8

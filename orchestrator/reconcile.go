@@ -28,21 +28,6 @@ func (p *provisioner) reconcileStore(ctx context.Context, store *Store) (string,
 	}
 
 	fullname := p.releaseFullname(store.ID)
-	if store.Engine == "medusa" {
-		medusaDeploy := fullname + "-medusa"
-		deploy, err := clientset.AppsV1().Deployments(store.Namespace).Get(ctx, medusaDeploy, metav1.GetOptions{})
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				return StatusProvisioning, "", nil
-			}
-			return StatusProvisioning, "", err
-		}
-		if deploy.Status.ReadyReplicas < 1 {
-			return StatusProvisioning, "", nil
-		}
-		return StatusReady, "", nil
-	}
-
 	if store.Engine != "woocommerce" {
 		return StatusProvisioning, "", nil
 	}

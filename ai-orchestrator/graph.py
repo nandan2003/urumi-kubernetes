@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
-import requests
+import httpx
 import logging
 import sys
 import asyncio
@@ -75,16 +75,17 @@ async def agent_node(state: AgentState):
     api = os.getenv("ORCH_API_BASE", "http://localhost:8080").rstrip("/")
     stores_context = ""
     try:
-        resp = requests.get(f"{api}/api/stores", timeout=5)
-        if resp.status_code == 200:
-            stores = resp.json()
-            if isinstance(stores, list) and stores:
-                store_names = [s.get("name") or s.get("id") for s in stores]
-                stores_context = f"\n\nCURRENT SYSTEM STATE: The following stores are available: {', '.join(store_names)}. "
-                if len(stores) == 1:
-                    stores_context += f"Automatically use store '{store_names[0]}' for all operations unless the user explicitly names a different one."
-                else:
-                    stores_context += "You must identify which store the user is referring to. If it is ambiguous, ask for clarification from the available list."
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{api}/api/stores")
+            if resp.status_code == 200:
+                stores = resp.json()
+                if isinstance(stores, list) and stores:
+                    store_names = [s.get("name") or s.get("id") for s in stores]
+                    stores_context = f"\n\nCURRENT SYSTEM STATE: The following stores are available: {', '.join(store_names)}. "
+                    if len(stores) == 1:
+                        stores_context += f"Automatically use store '{store_names[0]}' for all operations unless the user explicitly names a different one."
+                    else:
+                        stores_context += "You must identify which store the user is referring to. If it is ambiguous, ask for clarification from the available list."
     except Exception as e:
         logger.warning(f"Could not fetch stores for context: {e}")
 

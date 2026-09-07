@@ -31,7 +31,6 @@ export default function CreateStorePanel({
           Engine
           <select value={engine} onChange={onEngineChange}>
             <option value="woocommerce">WooCommerce</option>
-            <option value="medusa">Medusa (stub)</option>
           </select>
         </label>
         <label>

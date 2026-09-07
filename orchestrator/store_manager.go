@@ -38,24 +38,22 @@ type storeManager struct {
 	filePath string
 	mu       sync.RWMutex
 	stores   map[string]*Store
-	order    []string
 }
 
 type storeFile struct {
 	Stores map[string]*Store `json:"stores"`
-	Order  []string          `json:"order"`
+	Order  []string          `json:"order,omitempty"`
 }
 
 func newStoreManager(filePath string) *storeManager {
 	return &storeManager{
 		filePath: filePath,
 		stores:   map[string]*Store{},
-		order:    []string{},
 	}
 }
 
 func (sm *storeManager) Load() error {
-	// Load stores from disk and reconcile ordering.
+	// Load stores from disk.
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -78,9 +76,6 @@ func (sm *storeManager) Load() error {
 	if sf.Stores != nil {
 		sm.stores = sf.Stores
 	}
-	if sf.Order != nil {
-		sm.order = sf.Order
-	}
 	for _, store := range sm.stores {
 		if store.Status == StatusReady && !store.WasReady {
 			store.WasReady = true
@@ -89,16 +84,12 @@ func (sm *storeManager) Load() error {
 			store.ProvisionedAt = store.UpdatedAt
 		}
 	}
-	if sm.reconcileOrderLocked() {
-		_ = sm.Save()
-	}
 	return nil
 }
 
 func (sm *storeManager) Save() error {
 	sf := storeFile{
 		Stores: sm.stores,
-		Order:  sm.order,
 	}
 	data, err := json.MarshalIndent(sf, "", "  ")
 	if err != nil {
@@ -115,7 +106,6 @@ func (sm *storeManager) Add(store *Store) error {
 		return errors.New("store already exists")
 	}
 	sm.stores[store.ID] = store
-	sm.order = append(sm.order, store.ID)
 	return sm.Save()
 }
 
@@ -132,13 +122,6 @@ func (sm *storeManager) Remove(id string) {
 	defer sm.mu.Unlock()
 
 	delete(sm.stores, id)
-	filtered := sm.order[:0]
-	for _, item := range sm.order {
-		if item != id {
-			filtered = append(filtered, item)
-		}
-	}
-	sm.order = filtered
 	_ = sm.Save()
 }
 

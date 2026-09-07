@@ -234,8 +234,8 @@ func (o *orchestrator) handleCreateStore(c *gin.Context) {
 	if engine == "" {
 		engine = "woocommerce"
 	}
-	if engine != "woocommerce" && engine != "medusa" {
-		c.JSON(400, gin.H{"error": "engine must be woocommerce or medusa"})
+	if engine != "woocommerce" {
+		c.JSON(400, gin.H{"error": "engine must be woocommerce"})
 		o.auditEvent("create_store", "", "rejected", "invalid engine", c)
 		return
 	}

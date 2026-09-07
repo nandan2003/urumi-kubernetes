@@ -10,7 +10,7 @@ import json
 import os
 import re
 import subprocess
-import requests
+import httpx
 import time
 import shlex
 from pathlib import Path
@@ -147,7 +147,7 @@ def _store_namespace(store_name: str) -> str:
 
 def _fetch_stores() -> Optional[list[dict]]:
     try:
-        resp = requests.get(f"{ORCH_API_BASE}/api/stores", timeout=10)
+        resp = httpx.get(f"{ORCH_API_BASE}/api/stores", timeout=10.0)
         if resp.status_code != 200:
             return None
         data = resp.json()
